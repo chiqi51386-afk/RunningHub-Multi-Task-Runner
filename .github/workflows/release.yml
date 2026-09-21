@@ -2,8 +2,6 @@ name: 构建并发布 Windows 应用
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*"
   workflow_dispatch:
@@ -17,10 +15,6 @@ jobs:
   build-and-release:
     name: 云端构建、验证并发布
     runs-on: windows-latest
-    # GitHub currently rejects manual workflow_dispatch requests for this
-    # fork. A deliberately marked main commit provides an equivalent,
-    # auditable release trigger without building every ordinary commit.
-    if: github.event_name != 'push' || github.ref_type == 'tag' || contains(github.event.head_commit.message, '[release]')
 
     steps:
       - name: 检出源码
@@ -81,5 +75,3 @@ jobs:
           files: release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
           generate_release_notes: true
           name: RunningHub Runner ${{ env.RELEASE_TAG }}
-
-# Cloud release trigger marker
