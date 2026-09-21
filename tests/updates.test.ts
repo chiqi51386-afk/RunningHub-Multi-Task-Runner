@@ -15,11 +15,18 @@ test("GitHub release parsing selects the official Windows package", () => {
     published_at: "2026-09-21T00:00:00Z",
     assets: [
       { name: "source.zip", browser_download_url: "https://example.invalid/source.zip" },
-      { name: "RunningHub-Runner-v0.1.3-windows-x64.zip", browser_download_url: "https://example.invalid/app.zip" },
+      {
+        name: "RunningHub-Runner-v0.1.3-windows-x64.zip",
+        browser_download_url: "https://example.invalid/app.zip",
+        digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        size: 123456,
+      },
     ],
   }, "0.1.2");
   assert.equal(result.updateAvailable, true);
   assert.equal(result.latestVersion, "0.1.3");
   assert.equal(result.assetName, "RunningHub-Runner-v0.1.3-windows-x64.zip");
   assert.equal(result.assetUrl, "https://example.invalid/app.zip");
+  assert.equal(result.assetDigest, "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+  assert.equal(result.assetSize, 123456);
 });

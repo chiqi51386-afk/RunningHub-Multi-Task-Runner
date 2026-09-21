@@ -5,6 +5,8 @@ export const latestReleaseApiUrl = "https://api.github.com/repos/secure-artifact
 interface GithubReleaseAsset {
   name?: unknown;
   browser_download_url?: unknown;
+  digest?: unknown;
+  size?: unknown;
 }
 
 interface GithubReleasePayload {
@@ -23,6 +25,14 @@ export interface UpdateInfo {
   publishedAt?: string;
   assetName?: string;
   assetUrl?: string;
+  assetDigest?: string;
+  assetSize?: number;
+}
+
+export interface UpdateProgress {
+  stage: "downloading" | "verifying" | "extracting" | "restarting";
+  percent: number;
+  message: string;
 }
 
 function versionParts(value: string): number[] {
@@ -58,5 +68,7 @@ export function parseLatestRelease(payload: unknown, currentVersion: string): Up
     publishedAt: typeof release.published_at === "string" ? release.published_at : undefined,
     assetName: typeof asset?.name === "string" ? asset.name : undefined,
     assetUrl: typeof asset?.browser_download_url === "string" ? asset.browser_download_url : undefined,
+    assetDigest: typeof asset?.digest === "string" ? asset.digest : undefined,
+    assetSize: typeof asset?.size === "number" && Number.isFinite(asset.size) && asset.size > 0 ? asset.size : undefined,
   };
 }

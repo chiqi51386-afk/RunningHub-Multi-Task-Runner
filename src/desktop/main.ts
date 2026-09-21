@@ -1,11 +1,17 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
+import { createWriteStream } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { access, appendFile, mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { access, appendFile, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { RunningHubBackend } from "../core/index.js";
 import { InMemorySecretStore, PlainTextSecretStore } from "../core/secretStore.js";
 import type { Account, CreateJobInput, Job, WorkflowProfile, WorkflowRecord } from "../core/types.js";
 import { latestReleaseApiUrl, latestReleaseUrl, parseLatestRelease, updateRepositoryUrl } from "./updates.js";
+import type { UpdateInfo, UpdateProgress } from "./updates.js";
 
 interface RendererDraft {
   workflowId: string;
@@ -19,14 +25,134 @@ const smokeMode = process.argv.includes("--smoke");
 let mainWindow: BrowserWindow | undefined;
 let desktopSettingsPath = "";
 let defaultOutputDir = "";
+let updateInProgress = false;
 const runningHubApiKeysUrl = "https://www.runninghub.ai/zh-cn/call-api/bill-task?tab=keys&type=consumer";
 
 async function checkForUpdate() {
   const response = await fetch(latestReleaseApiUrl, {
     headers: { Accept: "application/vnd.github+json", "User-Agent": `RunningHub-Runner/${app.getVersion()}` },
+    signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) throw new Error(`检查更新失败：GitHub 返回 HTTP ${response.status}`);
   return parseLatestRelease(await response.json(), app.getVersion());
+}
+
+function sendUpdateProgress(progress: UpdateProgress): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("updates:progress", progress);
+}
+
+function runPowerShell(args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", ...args], {
+      windowsHide: true,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let errorOutput = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", chunk => { errorOutput = `${errorOutput}${String(chunk)}`.slice(-4000); });
+    child.once("error", reject);
+    child.once("exit", code => code === 0 ? resolve() : reject(new Error(errorOutput.trim() || `PowerShell 执行失败（退出码 ${code ?? "未知"}）。`)));
+  });
+}
+
+function validateUpdateAsset(info: UpdateInfo): asserts info is UpdateInfo & Required<Pick<UpdateInfo, "assetName" | "assetUrl" | "assetDigest">> {
+  if (!info.updateAvailable) throw new Error("当前已经是最新版本。");
+  if (!info.assetName || !info.assetUrl) throw new Error("最新版本缺少 Windows x64 更新包，请稍后重试或打开项目主页。");
+  if (!/^sha256:[a-f\d]{64}$/i.test(info.assetDigest ?? "")) throw new Error("更新包缺少 GitHub SHA-256 摘要，为安全起见已停止自动更新。");
+  const assetUrl = new URL(info.assetUrl);
+  if (assetUrl.protocol !== "https:" || assetUrl.hostname !== "github.com" ||
+    !assetUrl.pathname.startsWith("/secure-artifacts/RunningHub-Multi-Task-Runner/releases/download/")) {
+    throw new Error("更新包地址不是本项目的 GitHub Release，已停止自动更新。");
+  }
+}
+
+async function downloadAndInstallUpdate(): Promise<{ started: true }> {
+  if (updateInProgress) throw new Error("更新正在进行，请勿重复操作。");
+  if (process.platform !== "win32" || !app.isPackaged) throw new Error("自动更新仅支持已打包的 Windows 应用。");
+  updateInProgress = true;
+  try {
+    const info = await checkForUpdate();
+    validateUpdateAsset(info);
+    const updateRoot = path.join(app.getPath("userData"), "updates", `v${info.latestVersion}`);
+    const stagingDir = path.join(updateRoot, "staging");
+    const partialArchive = path.join(updateRoot, `${info.assetName}.part`);
+    const archivePath = path.join(updateRoot, info.assetName);
+    await rm(updateRoot, { recursive: true, force: true });
+    await mkdir(updateRoot, { recursive: true });
+
+    sendUpdateProgress({ stage: "downloading", percent: 0, message: `正在下载 v${info.latestVersion}…` });
+    const response = await fetch(info.assetUrl, {
+      headers: { Accept: "application/octet-stream", "User-Agent": `RunningHub-Runner/${app.getVersion()}` },
+      redirect: "follow",
+      signal: AbortSignal.timeout(10 * 60_000),
+    });
+    if (!response.ok || !response.body) throw new Error(`下载更新失败：GitHub 返回 HTTP ${response.status}`);
+    const expectedBytes = info.assetSize ?? (Number(response.headers.get("content-length")) || 0);
+    let receivedBytes = 0;
+    const hash = createHash("sha256");
+    const progress = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        receivedBytes += chunk.length;
+        hash.update(chunk);
+        const percent = expectedBytes > 0 ? Math.min(99, Math.round(receivedBytes / expectedBytes * 100)) : 0;
+        sendUpdateProgress({ stage: "downloading", percent, message: expectedBytes > 0 ? `正在下载 v${info.latestVersion}：${percent}%` : `正在下载 v${info.latestVersion}…` });
+        callback(null, chunk);
+      },
+    });
+    await pipeline(Readable.fromWeb(response.body as never), progress, createWriteStream(partialArchive));
+
+    sendUpdateProgress({ stage: "verifying", percent: 100, message: "正在校验更新包…" });
+    const actualDigest = `sha256:${hash.digest("hex")}`;
+    if (actualDigest.toLowerCase() !== info.assetDigest.toLowerCase()) {
+      await rm(partialArchive, { force: true });
+      throw new Error("更新包 SHA-256 校验失败，文件可能不完整，已停止更新。");
+    }
+    if (info.assetSize && receivedBytes !== info.assetSize) {
+      await rm(partialArchive, { force: true });
+      throw new Error(`更新包大小校验失败：应为 ${info.assetSize} 字节，实际为 ${receivedBytes} 字节。`);
+    }
+    await rename(partialArchive, archivePath);
+
+    sendUpdateProgress({ stage: "extracting", percent: 100, message: "正在解压并准备更新…" });
+    await mkdir(stagingDir, { recursive: true });
+    await runPowerShell(["-Command", "Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force", archivePath, stagingDir]);
+    const executableName = path.basename(process.execPath);
+    await access(path.join(stagingDir, executableName)).catch(() => { throw new Error("更新包结构无效：找不到应用程序文件。"); });
+
+    const updaterPath = path.join(updateRoot, "apply-update.ps1");
+    const installDir = path.dirname(process.execPath);
+    const updaterScript = String.raw`param(
+  [Parameter(Mandatory=$true)][int]$ParentProcessId,
+  [Parameter(Mandatory=$true)][string]$SourceDir,
+  [Parameter(Mandatory=$true)][string]$TargetDir,
+  [Parameter(Mandatory=$true)][string]$ExecutablePath,
+  [Parameter(Mandatory=$true)][string]$ArchivePath
+)
+$ErrorActionPreference = "Stop"
+Wait-Process -Id $ParentProcessId -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
+& robocopy.exe $SourceDir $TargetDir /E /COPY:DAT /DCOPY:DAT /R:5 /W:1 /NFL /NDL /NJH /NJS /NP
+$copyExitCode = $LASTEXITCODE
+if ($copyExitCode -gt 7) { throw "更新文件替换失败，Robocopy 退出码：$copyExitCode" }
+Remove-Item -LiteralPath $SourceDir -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+Start-Process -FilePath $ExecutablePath -WorkingDirectory $TargetDir
+Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+`;
+    await writeFile(updaterPath, updaterScript, "utf8");
+    const updater = spawn("powershell.exe", [
+      "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", updaterPath,
+      "-ParentProcessId", String(process.pid), "-SourceDir", stagingDir, "-TargetDir", installDir,
+      "-ExecutablePath", process.execPath, "-ArchivePath", archivePath,
+    ], { detached: true, windowsHide: true, stdio: "ignore" });
+    updater.unref();
+    sendUpdateProgress({ stage: "restarting", percent: 100, message: "更新已准备完成，正在重启…" });
+    setTimeout(() => app.quit(), 300);
+    return { started: true };
+  } catch (error) {
+    updateInProgress = false;
+    throw error;
+  }
 }
 
 interface DesktopSettings { outputDir?: string }
@@ -267,6 +393,7 @@ function registerHandlers(): void {
   ipcMain.handle("scheduler:stop", async () => { await backend.stop(); });
   ipcMain.handle("external:openApiKeys", async () => { await shell.openExternal(runningHubApiKeysUrl); });
   ipcMain.handle("updates:check", () => checkForUpdate());
+  ipcMain.handle("updates:downloadAndInstall", () => downloadAndInstallUpdate());
   ipcMain.handle("updates:openRepository", async () => { await shell.openExternal(updateRepositoryUrl); });
   ipcMain.handle("updates:openLatestRelease", async () => { await shell.openExternal(latestReleaseUrl); });
 }
@@ -313,7 +440,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
   await backend.start();
   if (smokeMode) {
     const connected = await window.webContents.executeJavaScript(`(async () => {
-      if (!window.runningHub?.jobs?.createBatch || !window.runningHub?.media || !window.runningHub?.downloads?.selectDirectory || !window.runningHub?.downloads?.resetDirectory || !window.runningHub?.updates?.check) return false;
+      if (!window.runningHub?.jobs?.createBatch || !window.runningHub?.media || !window.runningHub?.downloads?.selectDirectory || !window.runningHub?.downloads?.resetDirectory || !window.runningHub?.updates?.check || !window.runningHub?.updates?.downloadAndInstall) return false;
       const [accounts, workflows, jobs] = await Promise.all([
         window.runningHub.accounts.list(), window.runningHub.workflows.list(), window.runningHub.jobs.list()
       ]);

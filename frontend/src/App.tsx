@@ -6,7 +6,7 @@ import {
   Settings2, ShieldCheck, Square, Trash2, UsersRound, Workflow, X, Music2,
 } from "lucide-react";
 import { hasDesktopBridge } from "./bridge";
-import type { UpdateInfo } from "./bridge";
+import type { UpdateInfo, UpdateProgress } from "./bridge";
 import type { AccountState, AccountView, CreateJobDraft, JobOutputView, JobStatus, JobView, ViewId, WorkflowOutputView, WorkflowParameterView, WorkflowSemanticType, WorkflowView } from "./types";
 
 const initialAccounts: AccountView[] = [];
@@ -1137,9 +1137,13 @@ function SettingsModal({ preferences, onPreferencesChange, onClose }: { preferen
   const [working, setWorking] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>();
+  const [installingUpdate, setInstallingUpdate] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState<UpdateProgress>();
   useEffect(() => {
-    if (!window.runningHub) { setDownloadDirectory("仅桌面应用支持自定义下载目录"); return; }
-    void window.runningHub.downloads.directory().then(setDownloadDirectory).catch(reason => setError(reason instanceof Error ? reason.message : "读取下载目录失败"));
+    const bridge = window.runningHub;
+    if (!bridge) { setDownloadDirectory("仅桌面应用支持自定义下载目录"); return; }
+    void bridge.downloads.directory().then(setDownloadDirectory).catch(reason => setError(reason instanceof Error ? reason.message : "读取下载目录失败"));
+    return bridge.updates.onProgress(setUpdateProgress);
   }, []);
 
   async function chooseDirectory() {
@@ -1163,7 +1167,7 @@ function SettingsModal({ preferences, onPreferencesChange, onClose }: { preferen
   }
 
   async function checkUpdate() {
-    if (!window.runningHub || checkingUpdate) return;
+    if (!window.runningHub || checkingUpdate || installingUpdate) return;
     setCheckingUpdate(true);
     setError(undefined);
     try { setUpdateInfo(await window.runningHub.updates.check()); }
@@ -1171,7 +1175,32 @@ function SettingsModal({ preferences, onPreferencesChange, onClose }: { preferen
     finally { setCheckingUpdate(false); }
   }
 
-  return <div className="modal-backdrop" role="presentation"><div className="modal settings-modal" role="dialog" aria-modal="true" aria-label="设置"><div className="modal-head"><div><p>应用设置</p><h2>下载、通知与更新</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="关闭"><X size={18} /></button></div><section className="settings-section"><div className="settings-section-title"><FolderOpen size={18} /><div><strong>下载目录</strong><span>新完成的任务会下载到这个文件夹；历史任务仍保留原来的实际文件路径。</span></div></div><div className="directory-path" title={downloadDirectory}>{downloadDirectory}</div><div className="settings-actions"><button type="button" className="secondary" disabled={!window.runningHub || working} onClick={() => void chooseDirectory()}>{working ? "处理中…" : "选择文件夹"}</button><button type="button" className="secondary" disabled={!window.runningHub || working} onClick={() => void window.runningHub?.downloads.openDirectory()}><FolderOpen size={15} />打开当前目录</button><button type="button" className="ghost" disabled={!window.runningHub || working} onClick={() => void resetDirectory()}><RefreshCw size={14} />恢复默认</button></div></section><section className="settings-section"><div className="settings-section-title"><Settings2 size={18} /><div><strong>完成与失败提示</strong><span>顶部小提示不会阻塞操作，到时间后自动消失。</span></div></div><label>提示显示时间<select value={preferences.notificationDurationMs} onChange={event => onPreferencesChange({ ...preferences, notificationDurationMs: Number(event.target.value) })}><option value={3000}>3 秒</option><option value={5000}>5 秒</option><option value={8000}>8 秒</option></select><ChevronDown size={15} /></label><div className="notification-sound-row"><span><strong>成功 / 失败提示音</strong><small>任务状态变化时播放简短提示音</small></span><button type="button" className={`switch ${preferences.notificationSound ? "checked" : ""}`} onClick={() => { const next = !preferences.notificationSound; onPreferencesChange({ ...preferences, notificationSound: next }); if (next) playNotificationSound("success"); }} aria-pressed={preferences.notificationSound}><span /></button></div></section><section className="settings-section"><div className="settings-section-title"><Download size={18} /><div><strong>软件更新</strong><span>更新源：secure-artifacts/RunningHub-Multi-Task-Runner</span></div></div>{updateInfo && <div className={`update-status ${updateInfo.updateAvailable ? "available" : "current"}`}><strong>{updateInfo.updateAvailable ? `发现新版本 v${updateInfo.latestVersion}` : "当前已经是最新版本"}</strong><span>当前 v{updateInfo.currentVersion} · 最新 v{updateInfo.latestVersion}</span></div>}<div className="settings-actions"><button type="button" className="secondary" disabled={!window.runningHub || checkingUpdate} onClick={() => void checkUpdate()}>{checkingUpdate ? "正在检查…" : "检查更新"}</button>{updateInfo?.updateAvailable && <button type="button" className="primary" onClick={() => void window.runningHub?.updates.openLatestRelease()}><ExternalLink size={14} />打开更新页面</button>}<button type="button" className="ghost" onClick={() => void window.runningHub?.updates.openRepository()}>项目主页</button></div><div className="update-data-note"><ShieldCheck size={16} /><span>更新只替换程序目录。API Key、工作流、任务和设置保存在独立数据库中，不会因更新被删除。下载后请先退出软件，再解压并替换旧程序目录。</span></div></section>{error && <div className="import-feedback error modal-feedback"><AlertTriangle size={16} /><span>{error}</span></div>}<div className="modal-actions"><button type="button" className="primary" onClick={onClose}>完成</button></div></div></div>;
+  async function installUpdate() {
+    if (!window.runningHub || installingUpdate) return;
+    setInstallingUpdate(true);
+    setError(undefined);
+    setUpdateProgress({ stage: "downloading", percent: 0, message: "正在准备下载…" });
+    try { await window.runningHub.updates.downloadAndInstall(); }
+    catch (reason) {
+      setError(reason instanceof Error ? reason.message : "自动更新失败");
+      setInstallingUpdate(false);
+      setUpdateProgress(undefined);
+    }
+  }
+
+  return <div className="modal-backdrop" role="presentation"><div className="modal settings-modal" role="dialog" aria-modal="true" aria-label="设置">
+    <div className="modal-head"><div><p>应用设置</p><h2>下载、通知与更新</h2></div><button type="button" className="icon-button" disabled={installingUpdate} onClick={onClose} aria-label="关闭"><X size={18} /></button></div>
+    <section className="settings-section"><div className="settings-section-title"><FolderOpen size={18} /><div><strong>下载目录</strong><span>新完成的任务会下载到这个文件夹；历史任务仍保留原来的实际文件路径。</span></div></div><div className="directory-path" title={downloadDirectory}>{downloadDirectory}</div><div className="settings-actions"><button type="button" className="secondary" disabled={!window.runningHub || working || installingUpdate} onClick={() => void chooseDirectory()}>{working ? "处理中…" : "选择文件夹"}</button><button type="button" className="secondary" disabled={!window.runningHub || working || installingUpdate} onClick={() => void window.runningHub?.downloads.openDirectory()}><FolderOpen size={15} />打开当前目录</button><button type="button" className="ghost" disabled={!window.runningHub || working || installingUpdate} onClick={() => void resetDirectory()}><RefreshCw size={14} />恢复默认</button></div></section>
+    <section className="settings-section"><div className="settings-section-title"><Settings2 size={18} /><div><strong>完成与失败提示</strong><span>顶部小提示不会阻塞操作，到时间后自动消失。</span></div></div><label>提示显示时间<select value={preferences.notificationDurationMs} onChange={event => onPreferencesChange({ ...preferences, notificationDurationMs: Number(event.target.value) })}><option value={3000}>3 秒</option><option value={5000}>5 秒</option><option value={8000}>8 秒</option></select><ChevronDown size={15} /></label><div className="notification-sound-row"><span><strong>成功 / 失败提示音</strong><small>任务状态变化时播放简短提示音</small></span><button type="button" className={`switch ${preferences.notificationSound ? "checked" : ""}`} onClick={() => { const next = !preferences.notificationSound; onPreferencesChange({ ...preferences, notificationSound: next }); if (next) playNotificationSound("success"); }} aria-pressed={preferences.notificationSound}><span /></button></div></section>
+    <section className="settings-section"><div className="settings-section-title"><Download size={18} /><div><strong>软件更新</strong><span>更新源：secure-artifacts/RunningHub-Multi-Task-Runner</span></div></div>
+      {updateInfo && <div className={`update-status ${updateInfo.updateAvailable ? "available" : "current"}`}><strong>{updateInfo.updateAvailable ? `发现新版本 v${updateInfo.latestVersion}` : "当前已经是最新版本"}</strong><span>当前 v{updateInfo.currentVersion} · 最新 v{updateInfo.latestVersion}</span></div>}
+      {updateProgress && <div className="update-progress"><div><span>{updateProgress.message}</span><b>{updateProgress.percent}%</b></div><progress max={100} value={updateProgress.percent} /></div>}
+      <div className="settings-actions"><button type="button" className="secondary" disabled={!window.runningHub || checkingUpdate || installingUpdate} onClick={() => void checkUpdate()}>{checkingUpdate ? "正在检查…" : "检查更新"}</button>{updateInfo?.updateAvailable && <button type="button" className="primary" disabled={installingUpdate} onClick={() => void installUpdate()}>{installingUpdate ? <><LoaderCircle className="spin" size={14} />正在更新…</> : <><Download size={14} />立即更新并重启</>}</button>}<button type="button" className="ghost" disabled={installingUpdate} onClick={() => void window.runningHub?.updates.openRepository()}>项目主页</button></div>
+      <div className="update-data-note"><ShieldCheck size={16} /><span>更新包会从官方 GitHub Release 下载并校验 SHA-256，随后自动替换程序文件并重启。API Key、工作流、任务和设置保存在独立数据库中，不会被更新器删除。</span></div>
+    </section>
+    {error && <div className="import-feedback error modal-feedback"><AlertTriangle size={16} /><span>{error}</span>{updateInfo?.updateAvailable && <button type="button" className="ghost small" onClick={() => void window.runningHub?.updates.openLatestRelease()}><ExternalLink size={13} />手动下载</button>}</div>}
+    <div className="modal-actions"><button type="button" className="primary" disabled={installingUpdate} onClick={onClose}>完成</button></div>
+  </div></div>;
 }
 
 function OutputPlayer({ output }: { output: JobOutputView }) {

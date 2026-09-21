@@ -49,6 +49,12 @@ contextBridge.exposeInMainWorld("runningHub", {
   },
   updates: {
     check: () => ipcRenderer.invoke("updates:check"),
+    downloadAndInstall: () => ipcRenderer.invoke("updates:downloadAndInstall"),
+    onProgress: listener => {
+      const handler = (_event, progress) => listener(progress);
+      ipcRenderer.on("updates:progress", handler);
+      return () => ipcRenderer.removeListener("updates:progress", handler);
+    },
     openRepository: () => ipcRenderer.invoke("updates:openRepository"),
     openLatestRelease: () => ipcRenderer.invoke("updates:openLatestRelease"),
   },

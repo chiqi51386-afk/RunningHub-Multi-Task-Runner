@@ -1,6 +1,6 @@
 # RunningHub Multi-Task Runner
 
-一个面向 RunningHub 海外站的 Windows 桌面客户端，用来管理多个工作流、账号和生成任务。当前版本：**v0.1.3**。
+一个面向 RunningHub 海外站的 Windows 桌面客户端，用来管理多个工作流、账号和生成任务。当前版本：**v0.1.4**。
 
 ## 主要功能
 
@@ -10,12 +10,12 @@
 - 自动查询任务状态，生成完成后统一下载，并显示生成耗时。
 - 工作流参数可显示、隐藏和重新命名；工作流配置可导入、导出。
 - 下载目录可以在“设置”中修改。
-- 可以在“设置”中检查正式 GitHub 仓库的新版本。
+- 可以在“设置”中检查新版本，自动下载、校验、替换程序文件并重启。
 
 ## 直接使用 Windows 版
 
 1. 打开 [Releases](https://github.com/secure-artifacts/RunningHub-Multi-Task-Runner/releases)。
-2. 下载 `RunningHub-Runner-v0.1.3-windows-x64.zip`。
+2. 下载 `RunningHub-Runner-v0.1.4-windows-x64.zip`。
 3. 解压全部文件，不能只把 EXE 单独拖出来。
 4. 双击 `RunningHub Runner.exe`。
 5. 添加 RunningHub API Key，导入或选择工作流，然后创建任务。
@@ -48,7 +48,7 @@
 - 请勿把数据库、API Key、日志或包含隐私的截图上传到 GitHub。
 - 发布源码和可执行压缩包不包含账号、API Key、历史任务、下载文件或本地测试素材。
 - 如果提交状态未知，软件不会自动重复提交，避免重复扣费。
-- 软件更新只替换程序目录；API Key、工作流、任务和设置位于独立的用户数据库中，更新不会删除这些数据。
+- 软件更新从本项目 GitHub Release 下载并校验 SHA-256，只替换程序目录；API Key、工作流、任务和设置位于独立的用户数据库中，更新不会删除这些数据。
 
 ## 从源码运行
 
@@ -78,7 +78,7 @@ npm run release:win
 输出文件位于：
 
 ```text
-release-build/RunningHub-Runner-v0.1.3-windows-x64.zip
+release-build/RunningHub-Runner-v0.1.4-windows-x64.zip
 ```
 
 普通测试全部使用本地模拟接口，不会调用 RunningHub，也不会消耗余额。真实接口测试只有在明确设置确认变量和测试 API Key 后才会执行。

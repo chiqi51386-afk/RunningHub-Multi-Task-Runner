@@ -9,6 +9,14 @@ export interface UpdateInfo {
   publishedAt?: string;
   assetName?: string;
   assetUrl?: string;
+  assetDigest?: string;
+  assetSize?: number;
+}
+
+export interface UpdateProgress {
+  stage: "downloading" | "verifying" | "extracting" | "restarting";
+  percent: number;
+  message: string;
 }
 
 export interface RunningHubRendererBridge {
@@ -56,6 +64,8 @@ export interface RunningHubRendererBridge {
   };
   updates: {
     check(): Promise<UpdateInfo>;
+    downloadAndInstall(): Promise<{ started: true }>;
+    onProgress(listener: (progress: UpdateProgress) => void): () => void;
     openRepository(): Promise<void>;
     openLatestRelease(): Promise<void>;
   };
