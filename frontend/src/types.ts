@@ -11,6 +11,7 @@ export interface AccountView {
   enabled: boolean;
   lastCheckedAt?: number;
   currentJobId?: string;
+  remoteTaskCount?: number;
 }
 
 export interface WorkflowView {

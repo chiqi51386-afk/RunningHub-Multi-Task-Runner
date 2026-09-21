@@ -204,7 +204,7 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
 
 function accountView(account: Account) {
-  return { id: account.id, label: account.label, state: account.state, coins: account.coins ?? account.balance, apiType: account.apiType, enabled: account.enabled, lastCheckedAt: account.lastCheckedAt, currentJobId: account.currentJobId };
+  return { id: account.id, label: account.label, state: account.state, coins: account.coins ?? account.balance, apiType: account.apiType, enabled: account.enabled, lastCheckedAt: account.lastCheckedAt, currentJobId: account.currentJobId, remoteTaskCount: account.lastRemoteTaskCount };
 }
 
 function workflowView(workflow: WorkflowRecord) {

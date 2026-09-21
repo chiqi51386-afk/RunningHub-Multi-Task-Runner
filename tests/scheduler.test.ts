@@ -435,6 +435,34 @@ test("REMOTE_BUSY accounts are rechecked and newly-created jobs auto-schedule", 
   } finally { await backend.close(); }
 });
 
+test("REMOTE_BUSY accounts recover automatically even when the local queue is empty", async () => {
+  let statusChecks = 0;
+  const mockFetch: typeof fetch = async input => {
+    if (String(input).endsWith("/accountStatus")) {
+      statusChecks += 1;
+      return Response.json({ code: 0, data: {
+        remainCoins: "37",
+        currentTaskCounts: statusChecks === 1 ? 1 : 0,
+        apiType: "NORMAL",
+      } });
+    }
+    throw new Error(`Unexpected URL ${String(input)}`);
+  };
+  const backend = new RunningHubBackend({
+    databasePath: ":memory:", fetch: mockFetch, logger: new NullLogger(),
+    config: { accountFreshnessMs: 10 },
+  });
+  try {
+    backend.accounts.add("Remote", "remote-key");
+    await backend.start();
+    assert.equal(backend.accounts.list()[0]?.state, "REMOTE_BUSY");
+    assert.equal(backend.accounts.list()[0]?.lastRemoteTaskCount, 1);
+    await waitFor(() => backend.accounts.list()[0]?.state === "IDLE");
+    assert.ok(statusChecks >= 2);
+    assert.equal(backend.accounts.list()[0]?.lastRemoteTaskCount, 0);
+  } finally { await backend.close(); }
+});
+
 test("zero remainCoins marks an account as insufficient even when remainMoney is positive", async () => {
   const mockFetch: typeof fetch = async input => {
     if (String(input).endsWith("/accountStatus")) {

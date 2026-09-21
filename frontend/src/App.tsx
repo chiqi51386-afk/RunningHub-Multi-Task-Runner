@@ -204,8 +204,11 @@ function StatusPill({ status }: { status: JobStatus }) {
   return <span className={`status status-${status.toLowerCase()}`}>{active && <span className="pulse-dot" />}{statusLabel[status]}</span>;
 }
 
-function AccountPill({ state }: { state: AccountState }) {
-  return <span className={`account-state account-${state.toLowerCase()}`}><span />{stateLabel[state]}</span>;
+function AccountPill({ state, remoteTaskCount }: { state: AccountState; remoteTaskCount?: number }) {
+  const label = state === "REMOTE_BUSY" && remoteTaskCount
+    ? `远端任务 ${remoteTaskCount}`
+    : stateLabel[state];
+  return <span className={`account-state account-${state.toLowerCase()}`} title={state === "REMOTE_BUSY" ? "RunningHub 返回该 API Key 当前有远端任务，任务结束后会自动复查" : undefined}><span />{label}</span>;
 }
 
 function App() {
@@ -491,7 +494,7 @@ function Overview({ stats, accounts, jobs, onView, schedulerRunning }: { stats: 
       </div>
       <div className="panel capacity-panel">
         <div className="panel-head"><div><h2>账号容量</h2><p>本地占用优先于远端状态</p></div><ShieldCheck size={20} /></div>
-        <div className="account-stack">{accounts.map(account => <div className="mini-account" key={account.id}><div className="avatar">{account.label.slice(0, 1)}</div><div><strong>{account.label}</strong><span>{account.apiType ?? "未检测"} · {account.coins ?? "—"} RH 币</span></div><AccountPill state={account.state} /></div>)}</div>
+        <div className="account-stack">{accounts.map(account => <div className="mini-account" key={account.id}><div className="avatar">{account.label.slice(0, 1)}</div><div><strong>{account.label}</strong><span>{account.apiType ?? "未检测"} · {account.coins ?? "—"} RH 币</span></div><AccountPill state={account.state} remoteTaskCount={account.remoteTaskCount} /></div>)}</div>
         <button className="full-secondary" onClick={() => onView("accounts")}>管理账号池</button>
       </div>
     </section>
@@ -511,7 +514,7 @@ function Accounts({ accounts, refreshing, onRefresh, onRefreshAll, onAdd, onReke
         <div className="table-header"><span>账号</span><span>状态</span><span>RH 币</span><span>API 类型</span><span>最近检测</span><span>操作</span></div>
         {accounts.map(account => <div className="table-row" key={account.id}>
           <div className="identity"><div className="avatar large">{account.label.slice(0, 1)}</div><div><strong>{account.label}</strong><small>{account.id}</small></div></div>
-          <AccountPill state={account.state} />
+          <AccountPill state={account.state} remoteTaskCount={account.remoteTaskCount} />
           <strong className="coin-value">{account.coins ?? "—"}</strong>
           <span className="mono-label">{account.apiType ?? "—"}</span>
           <span className="muted">{relativeTime(account.lastCheckedAt)}</span>

@@ -166,6 +166,11 @@ export class Scheduler {
     if (!this.running || this.scheduling) return;
     this.scheduling = true;
     try {
+      // A remote task can outlive its local job (for example when another
+      // client submitted it, or an older app version lost/deleted its local
+      // record). Keep transient account states fresh even when our local
+      // queue is empty, otherwise REMOTE_BUSY can remain on screen forever.
+      await this.refreshTransientAccounts();
       while (this.running && this.db.pendingCount() > 0) {
         let available = this.accounts.available();
         if (!available.length) {
@@ -210,6 +215,30 @@ export class Scheduler {
     } finally {
       this.scheduling = false;
     }
+  }
+
+  private async refreshTransientAccounts(): Promise<void> {
+    const now = Date.now();
+    const isTransient = (account: ReturnType<AccountPool["list"]>[number]) =>
+      account.enabled && !account.currentJobId &&
+      ["REMOTE_BUSY", "TEMP_UNAVAILABLE", "COOLDOWN"].includes(account.state);
+    const candidates = this.accounts.list().filter(isTransient);
+    const due = candidates.filter(account => account.state === "COOLDOWN"
+      ? (account.cooldownUntil ?? 0) <= now
+      : !this.accounts.isFresh(account, now));
+
+    for (const [index, account] of due.entries()) {
+      if (!this.running) return;
+      await this.accounts.refresh(account.id);
+      if (index < due.length - 1) await new Promise(resolve => setTimeout(resolve, 350));
+    }
+
+    const remaining = this.accounts.list().filter(isTransient);
+    if (!remaining.length) return;
+    const nextCheckAt = Math.min(...remaining.map(account => account.state === "COOLDOWN"
+      ? Math.max(account.cooldownUntil ?? now, now + 10)
+      : Math.max((account.lastCheckedAt ?? now) + this.config.accountFreshnessMs + 1, now + 10)));
+    this.queueAccountWake(Math.max(10, nextCheckAt - Date.now()));
   }
 
   private launch(jobId: string): void {
