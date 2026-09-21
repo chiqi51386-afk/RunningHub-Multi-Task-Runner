@@ -1,6 +1,6 @@
 # RunningHub Multi-Task Runner
 
-一个面向 RunningHub 海外站的 Windows 桌面客户端，用来管理多个工作流、账号和生成任务。当前版本：**v0.1.7**。
+一个面向 RunningHub 海外站的 Windows 桌面客户端，用来管理多个工作流、账号和生成任务。当前版本：**v0.1.8**。
 
 ## 主要功能
 
@@ -15,7 +15,7 @@
 ## 直接使用 Windows 版
 
 1. 打开 [Releases](https://github.com/secure-artifacts/RunningHub-Multi-Task-Runner/releases)。
-2. 下载 `RunningHub-Runner-v0.1.7-windows-x64.zip`。
+2. 下载 `RunningHub-Runner-v0.1.8-windows-x64.zip`。
 3. 解压全部文件，不能只把 EXE 单独拖出来。
 4. 双击 `RunningHub Runner.exe`。
 5. 添加 RunningHub API Key，导入或选择工作流，然后创建任务。
@@ -78,7 +78,7 @@ npm run release:win
 输出文件位于：
 
 ```text
-release-build/RunningHub-Runner-v0.1.7-windows-x64.zip
+release-build/RunningHub-Runner-v0.1.8-windows-x64.zip
 ```
 
 普通测试全部使用本地模拟接口，不会调用 RunningHub，也不会消耗余额。真实接口测试只有在明确设置确认变量和测试 API Key 后才会执行。
