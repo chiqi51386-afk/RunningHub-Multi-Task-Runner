@@ -47,4 +47,9 @@ contextBridge.exposeInMainWorld("runningHub", {
   external: {
     openApiKeys: () => ipcRenderer.invoke("external:openApiKeys"),
   },
+  updates: {
+    check: () => ipcRenderer.invoke("updates:check"),
+    openRepository: () => ipcRenderer.invoke("updates:openRepository"),
+    openLatestRelease: () => ipcRenderer.invoke("updates:openLatestRelease"),
+  },
 });

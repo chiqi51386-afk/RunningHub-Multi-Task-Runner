@@ -5,6 +5,7 @@ import { access, appendFile, mkdir, readFile, realpath, stat, writeFile } from "
 import { RunningHubBackend } from "../core/index.js";
 import { InMemorySecretStore, PlainTextSecretStore } from "../core/secretStore.js";
 import type { Account, CreateJobInput, Job, WorkflowProfile, WorkflowRecord } from "../core/types.js";
+import { latestReleaseApiUrl, latestReleaseUrl, parseLatestRelease, updateRepositoryUrl } from "./updates.js";
 
 interface RendererDraft {
   workflowId: string;
@@ -19,6 +20,14 @@ let mainWindow: BrowserWindow | undefined;
 let desktopSettingsPath = "";
 let defaultOutputDir = "";
 const runningHubApiKeysUrl = "https://www.runninghub.ai/zh-cn/call-api/bill-task?tab=keys&type=consumer";
+
+async function checkForUpdate() {
+  const response = await fetch(latestReleaseApiUrl, {
+    headers: { Accept: "application/vnd.github+json", "User-Agent": `RunningHub-Runner/${app.getVersion()}` },
+  });
+  if (!response.ok) throw new Error(`检查更新失败：GitHub 返回 HTTP ${response.status}`);
+  return parseLatestRelease(await response.json(), app.getVersion());
+}
 
 interface DesktopSettings { outputDir?: string }
 
@@ -257,6 +266,9 @@ function registerHandlers(): void {
   ipcMain.handle("scheduler:start", async () => { await backend.start(); });
   ipcMain.handle("scheduler:stop", async () => { await backend.stop(); });
   ipcMain.handle("external:openApiKeys", async () => { await shell.openExternal(runningHubApiKeysUrl); });
+  ipcMain.handle("updates:check", () => checkForUpdate());
+  ipcMain.handle("updates:openRepository", async () => { await shell.openExternal(updateRepositoryUrl); });
+  ipcMain.handle("updates:openLatestRelease", async () => { await shell.openExternal(latestReleaseUrl); });
 }
 
 function safeFilePart(value: string): string {
@@ -301,7 +313,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
   await backend.start();
   if (smokeMode) {
     const connected = await window.webContents.executeJavaScript(`(async () => {
-      if (!window.runningHub?.jobs?.createBatch || !window.runningHub?.media || !window.runningHub?.downloads?.selectDirectory || !window.runningHub?.downloads?.resetDirectory) return false;
+      if (!window.runningHub?.jobs?.createBatch || !window.runningHub?.media || !window.runningHub?.downloads?.selectDirectory || !window.runningHub?.downloads?.resetDirectory || !window.runningHub?.updates?.check) return false;
       const [accounts, workflows, jobs] = await Promise.all([
         window.runningHub.accounts.list(), window.runningHub.workflows.list(), window.runningHub.jobs.list()
       ]);

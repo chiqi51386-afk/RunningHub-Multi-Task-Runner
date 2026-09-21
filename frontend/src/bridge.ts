@@ -1,5 +1,16 @@
 import type { AccountView, CreateJobDraft, JobView, WorkflowView } from "./types";
 
+export interface UpdateInfo {
+  currentVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+  repositoryUrl: string;
+  releaseUrl: string;
+  publishedAt?: string;
+  assetName?: string;
+  assetUrl?: string;
+}
+
 export interface RunningHubRendererBridge {
   accounts: {
     list(): Promise<AccountView[]>;
@@ -42,6 +53,11 @@ export interface RunningHubRendererBridge {
   };
   external: {
     openApiKeys(): Promise<void>;
+  };
+  updates: {
+    check(): Promise<UpdateInfo>;
+    openRepository(): Promise<void>;
+    openLatestRelease(): Promise<void>;
   };
 }
 
