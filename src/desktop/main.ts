@@ -123,7 +123,19 @@ async function downloadAndInstallUpdate(): Promise<{ started: true }> {
 
     sendUpdateProgress({ stage: "extracting", percent: 100, message: "正在解压并准备更新…" });
     await mkdir(stagingDir, { recursive: true });
-    await runPowerShell(["-Command", "Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force", archivePath, stagingDir]);
+    const extractorPath = path.join(updateRoot, "extract-update.ps1");
+    await writeFile(extractorPath, String.raw`param(
+  [Parameter(Mandatory=$true)][string]$ArchivePath,
+  [Parameter(Mandatory=$true)][string]$DestinationPath
+)
+$ErrorActionPreference = "Stop"
+Expand-Archive -LiteralPath $ArchivePath -DestinationPath $DestinationPath -Force
+`, "utf8");
+    try {
+      await runPowerShell(["-File", extractorPath, "-ArchivePath", archivePath, "-DestinationPath", stagingDir]);
+    } finally {
+      await rm(extractorPath, { force: true });
+    }
     const executableName = path.basename(process.execPath);
     await access(path.join(stagingDir, executableName)).catch(() => { throw new Error("更新包结构无效：找不到应用程序文件。"); });
 
