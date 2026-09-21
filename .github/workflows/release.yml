@@ -81,3 +81,5 @@ jobs:
           files: release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
           generate_release_notes: true
           name: RunningHub Runner ${{ env.RELEASE_TAG }}
+
+# Cloud release trigger marker
