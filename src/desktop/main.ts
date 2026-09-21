@@ -10,7 +10,7 @@ import { pipeline } from "node:stream/promises";
 import { RunningHubBackend } from "../core/index.js";
 import { InMemorySecretStore, PlainTextSecretStore } from "../core/secretStore.js";
 import type { Account, CreateJobInput, Job, WorkflowProfile, WorkflowRecord } from "../core/types.js";
-import { latestReleaseApiUrl, latestReleaseUrl, parseLatestRelease, updateRepositoryUrl } from "./updates.js";
+import { latestReleaseApiUrls, latestReleaseUrl, parseLatestRelease, trustedUpdateAssetPrefixes, updateRepositoryUrl } from "./updates.js";
 import type { UpdateInfo, UpdateProgress } from "./updates.js";
 
 interface RendererDraft {
@@ -29,12 +29,20 @@ let updateInProgress = false;
 const runningHubApiKeysUrl = "https://www.runninghub.ai/zh-cn/call-api/bill-task?tab=keys&type=consumer";
 
 async function checkForUpdate() {
-  const response = await fetch(latestReleaseApiUrl, {
-    headers: { Accept: "application/vnd.github+json", "User-Agent": `RunningHub-Runner/${app.getVersion()}` },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!response.ok) throw new Error(`检查更新失败：GitHub 返回 HTTP ${response.status}`);
-  return parseLatestRelease(await response.json(), app.getVersion());
+  let lastError = "GitHub 更新服务暂不可用。";
+  for (const apiUrl of latestReleaseApiUrls) {
+    try {
+      const response = await fetch(apiUrl, {
+        headers: { Accept: "application/vnd.github+json", "User-Agent": `RunningHub-Runner/${app.getVersion()}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (response.ok) return parseLatestRelease(await response.json(), app.getVersion());
+      lastError = `GitHub 返回 HTTP ${response.status}`;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  throw new Error(`检查更新失败：${lastError}`);
 }
 
 function sendUpdateProgress(progress: UpdateProgress): void {
@@ -61,7 +69,7 @@ function validateUpdateAsset(info: UpdateInfo): asserts info is UpdateInfo & Req
   if (!/^sha256:[a-f\d]{64}$/i.test(info.assetDigest ?? "")) throw new Error("更新包缺少 GitHub SHA-256 摘要，为安全起见已停止自动更新。");
   const assetUrl = new URL(info.assetUrl);
   if (assetUrl.protocol !== "https:" || assetUrl.hostname !== "github.com" ||
-    !assetUrl.pathname.startsWith("/secure-artifacts/RunningHub-Multi-Task-Runner/releases/download/")) {
+    !trustedUpdateAssetPrefixes.some(prefix => assetUrl.pathname.startsWith(prefix))) {
     throw new Error("更新包地址不是本项目的 GitHub Release，已停止自动更新。");
   }
 }
