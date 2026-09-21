@@ -1,0 +1,66 @@
+{
+  "263": {
+    "class_type": "TextInput",
+    "inputs": { "text": "A cinematic crane flying over mountains" },
+    "_meta": { "title": "H3 Prompt" }
+  },
+  "259": {
+    "class_type": "PrimitiveInt",
+    "inputs": { "value": 6 },
+    "_meta": { "title": "视频时长 Duration" }
+  },
+  "260": {
+    "class_type": "PrimitiveString",
+    "inputs": { "value": "16:9" },
+    "_meta": { "title": "Aspect Ratio" }
+  },
+  "261": {
+    "class_type": "PrimitiveString",
+    "inputs": { "value": "1080P" },
+    "_meta": { "title": "Resolution" }
+  },
+  "262": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "reference-1.png" },
+    "_meta": { "title": "Image 1" }
+  },
+  "2630": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "reference-2.png" },
+    "_meta": { "title": "Image 2" }
+  },
+  "264": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "reference-3.png" },
+    "_meta": { "title": "Image 3" }
+  },
+  "265": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "reference-4.png" },
+    "_meta": { "title": "Image 4" }
+  },
+  "266": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "reference-5.png" },
+    "_meta": { "title": "Image 5" }
+  },
+  "267": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "reference-6.png" },
+    "_meta": { "title": "Image 6" }
+  },
+  "300": {
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "inputs": {
+      "ref_images": {
+        "ref_image_1": ["262", 0],
+        "ref_image_2": ["2630", 0],
+        "ref_image_3": ["264", 0],
+        "ref_image_4": ["265", 0],
+        "ref_image_5": ["266", 0],
+        "ref_image_6": ["267", 0]
+      }
+    },
+    "_meta": { "title": "MiniMax H3 Reference to Video" }
+  }
+}

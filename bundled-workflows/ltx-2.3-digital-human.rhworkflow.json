@@ -1,0 +1,2133 @@
+{
+  "format": "runninghub-runner-workflow",
+  "schemaVersion": 1,
+  "exportedAt": "2026-09-21T06:13:02.953Z",
+  "exportedBy": {
+    "application": "RunningHub Runner",
+    "version": "0.1.0"
+  },
+  "workflow": {
+    "name": "LTX2.3数字人",
+    "runningHubWorkflowId": "2101727071255941122",
+    "apiJson": {
+      "153": {
+        "inputs": {
+          "cfg": 1,
+          "model": [
+            "312",
+            0
+          ],
+          "positive": [
+            "164",
+            0
+          ],
+          "negative": [
+            "164",
+            1
+          ]
+        },
+        "class_type": "CFGGuider",
+        "_meta": {
+          "title": "CFG Guider"
+        }
+      },
+      "154": {
+        "inputs": {
+          "sampler_name": "euler"
+        },
+        "class_type": "KSamplerSelect",
+        "_meta": {
+          "title": "KSamplerSelect"
+        }
+      },
+      "155": {
+        "inputs": {
+          "text_encoder": "gemma_3_12B_it_fp8_e4m3fn.safetensors",
+          "ckpt_name": "ltx-2.3-22b-dev.safetensors",
+          "device": "default"
+        },
+        "class_type": "LTXAVTextEncoderLoader",
+        "_meta": {
+          "title": "Load LTXV Audio Text Encoder"
+        }
+      },
+      "161": {
+        "inputs": {
+          "noise": [
+            "178",
+            0
+          ],
+          "guider": [
+            "153",
+            0
+          ],
+          "sampler": [
+            "154",
+            0
+          ],
+          "sigmas": [
+            "238",
+            0
+          ],
+          "latent_image": [
+            "166",
+            0
+          ]
+        },
+        "class_type": "SamplerCustomAdvanced",
+        "_meta": {
+          "title": "SamplerCustomAdvanced"
+        }
+      },
+      "162": {
+        "inputs": {
+          "width": [
+            "289",
+            0
+          ],
+          "height": [
+            "290",
+            0
+          ],
+          "length": [
+            "288",
+            0
+          ],
+          "batch_size": 1
+        },
+        "class_type": "EmptyLTXVLatentVideo",
+        "_meta": {
+          "title": "Empty LTXV Latent Video"
+        }
+      },
+      "164": {
+        "inputs": {
+          "frame_rate": 25,
+          "positive": [
+            "169",
+            0
+          ],
+          "negative": [
+            "165",
+            0
+          ]
+        },
+        "class_type": "LTXVConditioning",
+        "_meta": {
+          "title": "LTXVConditioning"
+        }
+      },
+      "165": {
+        "inputs": {
+          "text": "",
+          "clip": [
+            "155",
+            0
+          ]
+        },
+        "class_type": "CLIPTextEncode",
+        "_meta": {
+          "title": "CLIP Text Encode (Prompt)"
+        }
+      },
+      "166": {
+        "inputs": {
+          "video_latent": [
+            "304",
+            0
+          ],
+          "audio_latent": [
+            "248",
+            0
+          ]
+        },
+        "class_type": "LTXVConcatAVLatent",
+        "_meta": {
+          "title": "Concat AV Latent"
+        }
+      },
+      "169": {
+        "inputs": {
+          "text": "",
+          "clip": [
+            "155",
+            0
+          ]
+        },
+        "class_type": "CLIPTextEncode",
+        "_meta": {
+          "title": "CLIP Text Encode (Prompt)"
+        }
+      },
+      "171": {
+        "inputs": {
+          "ckpt_name": "ltx-2.3-22b-dev.safetensors"
+        },
+        "class_type": "LTXVAudioVAELoader",
+        "_meta": {
+          "title": "Load LTXV Audio VAE"
+        }
+      },
+      "178": {
+        "inputs": {
+          "noise_seed": 131
+        },
+        "class_type": "RandomNoise",
+        "_meta": {
+          "title": "RandomNoise"
+        }
+      },
+      "184": {
+        "inputs": {
+          "ckpt_name": "ltx-2.3-22b-distilled-1.1-42.9G.safetensors"
+        },
+        "class_type": "CheckpointLoaderSimple",
+        "_meta": {
+          "title": "Load Checkpoint"
+        }
+      },
+      "190": {
+        "inputs": {
+          "frame_rate": 25,
+          "loop_count": 0,
+          "filename_prefix": "LTX-2",
+          "format": "video/h264-mp4",
+          "pix_fmt": "yuv420p",
+          "crf": 19,
+          "save_metadata": true,
+          "trim_to_audio": false,
+          "pingpong": false,
+          "save_output": true,
+          "no_preview": false,
+          "images": [
+            "392",
+            0
+          ],
+          "audio": [
+            "393",
+            0
+          ]
+        },
+        "class_type": "VHS_VideoCombine",
+        "_meta": {
+          "title": "Video Combine 🎥🅥🅗🅢"
+        }
+      },
+      "234": {
+        "inputs": {
+          "tile_size": 512,
+          "overlap": 64,
+          "temporal_size": 4096,
+          "temporal_overlap": 8,
+          "samples": [
+            "245",
+            0
+          ],
+          "vae": [
+            "184",
+            2
+          ]
+        },
+        "class_type": "VAEDecodeTiled",
+        "_meta": {
+          "title": "VAE Decode (Tiled)"
+        }
+      },
+      "238": {
+        "inputs": {
+          "scheduler": "simple",
+          "steps": 4,
+          "denoise": 1,
+          "model": [
+            "184",
+            0
+          ]
+        },
+        "class_type": "BasicScheduler",
+        "_meta": {
+          "title": "BasicScheduler"
+        }
+      },
+      "242": {
+        "inputs": {
+          "audio": [
+            "393",
+            0
+          ],
+          "audio_vae": [
+            "171",
+            0
+          ]
+        },
+        "class_type": "LTXVAudioVAEEncode",
+        "_meta": {
+          "title": "LTXV Audio VAE Encode"
+        }
+      },
+      "245": {
+        "inputs": {
+          "av_latent": [
+            "292",
+            0
+          ]
+        },
+        "class_type": "LTXVSeparateAVLatent",
+        "_meta": {
+          "title": "Separate AV Latent"
+        }
+      },
+      "248": {
+        "inputs": {
+          "samples": [
+            "242",
+            0
+          ],
+          "mask": [
+            "249",
+            0
+          ]
+        },
+        "class_type": "SetLatentNoiseMask",
+        "_meta": {
+          "title": "Set Latent Noise Mask"
+        }
+      },
+      "249": {
+        "inputs": {
+          "value": 0,
+          "width": [
+            "289",
+            0
+          ],
+          "height": [
+            "290",
+            0
+          ]
+        },
+        "class_type": "SolidMask",
+        "_meta": {
+          "title": "Create Solid Mask"
+        }
+      },
+      "268": {
+        "inputs": {
+          "sage_attention": "auto",
+          "allow_compile": false,
+          "model": [
+            "184",
+            0
+          ]
+        },
+        "class_type": "PathchSageAttentionKJ",
+        "_meta": {
+          "title": "Patch Sage Attention KJ"
+        }
+      },
+      "278": {
+        "inputs": {
+          "anything": [
+            "234",
+            0
+          ]
+        },
+        "class_type": "easy cleanGpuUsed",
+        "_meta": {
+          "title": "Clean VRAM Used"
+        }
+      },
+      "288": {
+        "inputs": {
+          "value": [
+            "387",
+            0
+          ]
+        },
+        "class_type": "INTConstant",
+        "_meta": {
+          "title": "INT Constant"
+        }
+      },
+      "289": {
+        "inputs": {
+          "value": [
+            "317",
+            0
+          ]
+        },
+        "class_type": "INTConstant",
+        "_meta": {
+          "title": "INT Constant"
+        }
+      },
+      "290": {
+        "inputs": {
+          "value": [
+            "398",
+            0
+          ]
+        },
+        "class_type": "INTConstant",
+        "_meta": {
+          "title": "INT Constant"
+        }
+      },
+      "292": {
+        "inputs": {
+          "seed": 492008784595040,
+          "steps": 4,
+          "cfg": 1,
+          "sampler_name": "euler",
+          "scheduler": "simple",
+          "denoise": 0.4,
+          "model": [
+            "312",
+            0
+          ],
+          "positive": [
+            "296",
+            0
+          ],
+          "negative": [
+            "296",
+            1
+          ],
+          "latent_image": [
+            "293",
+            0
+          ]
+        },
+        "class_type": "KSampler",
+        "_meta": {
+          "title": "KSampler"
+        }
+      },
+      "293": {
+        "inputs": {
+          "video_latent": [
+            "335",
+            0
+          ],
+          "audio_latent": [
+            "248",
+            0
+          ]
+        },
+        "class_type": "LTXVConcatAVLatent",
+        "_meta": {
+          "title": "Concat AV Latent"
+        }
+      },
+      "295": {
+        "inputs": {
+          "model_name": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+        },
+        "class_type": "LatentUpscaleModelLoader",
+        "_meta": {
+          "title": "Load Latent Upscale Model"
+        }
+      },
+      "296": {
+        "inputs": {
+          "positive": [
+            "164",
+            0
+          ],
+          "negative": [
+            "164",
+            1
+          ],
+          "latent": [
+            "297",
+            0
+          ]
+        },
+        "class_type": "LTXVCropGuides",
+        "_meta": {
+          "title": "LTXVCropGuides"
+        }
+      },
+      "297": {
+        "inputs": {
+          "av_latent": [
+            "161",
+            0
+          ]
+        },
+        "class_type": "LTXVSeparateAVLatent",
+        "_meta": {
+          "title": "Separate AV Latent"
+        }
+      },
+      "304": {
+        "inputs": {
+          "strength": 1,
+          "bypass": [
+            "386",
+            0
+          ],
+          "vae": [
+            "184",
+            2
+          ],
+          "image": [
+            "330",
+            0
+          ],
+          "latent": [
+            "162",
+            0
+          ]
+        },
+        "class_type": "LTXVImgToVideoInplace",
+        "_meta": {
+          "title": "LTXVImgToVideoInplace"
+        }
+      },
+      "308": {
+        "inputs": {
+          "a": [
+            "394",
+            0
+          ]
+        },
+        "class_type": "CM_FloatToInt",
+        "_meta": {
+          "title": "FloatToInt"
+        }
+      },
+      "311": {
+        "inputs": {
+          "text": "750",
+          "anything": [
+            "387",
+            0
+          ]
+        },
+        "class_type": "easy showAnything",
+        "_meta": {
+          "title": "Show Any"
+        }
+      },
+      "312": {
+        "inputs": {
+          "preview_rate": 8,
+          "model": [
+            "390",
+            0
+          ]
+        },
+        "class_type": "LTX2SamplingPreviewOverride",
+        "_meta": {
+          "title": "LTX2 Sampling Preview Override"
+        }
+      },
+      "317": {
+        "inputs": {
+          "value": "a/2",
+          "a": [
+            "397",
+            0
+          ]
+        },
+        "class_type": "SimpleMath+",
+        "_meta": {
+          "title": "🔧 Simple Math"
+        }
+      },
+      "327": {
+        "inputs": {
+          "image": ""
+        },
+        "class_type": "LoadImage",
+        "_meta": {
+          "title": "Load Image"
+        }
+      },
+      "329": {
+        "inputs": {
+          "longer_edge": 1280,
+          "images": [
+            "327",
+            0
+          ]
+        },
+        "class_type": "ResizeImagesByLongerEdge",
+        "_meta": {
+          "title": "Resize Images by Longer Edge (DEPRECATED)"
+        }
+      },
+      "330": {
+        "inputs": {
+          "img_compression": 18,
+          "image": [
+            "329",
+            0
+          ]
+        },
+        "class_type": "LTXVPreprocess",
+        "_meta": {
+          "title": "LTXV Preprocess"
+        }
+      },
+      "335": {
+        "inputs": {
+          "strength": 1,
+          "bypass": [
+            "386",
+            0
+          ],
+          "vae": [
+            "184",
+            2
+          ],
+          "image": [
+            "330",
+            0
+          ],
+          "latent": [
+            "336",
+            0
+          ]
+        },
+        "class_type": "LTXVImgToVideoInplace",
+        "_meta": {
+          "title": "LTXVImgToVideoInplace"
+        }
+      },
+      "336": {
+        "inputs": {
+          "samples": [
+            "297",
+            0
+          ],
+          "upscale_model": [
+            "295",
+            0
+          ],
+          "vae": [
+            "184",
+            2
+          ]
+        },
+        "class_type": "LTXVLatentUpsampler",
+        "_meta": {
+          "title": "LTXVLatentUpsampler"
+        }
+      },
+      "386": {
+        "inputs": {
+          "value": false
+        },
+        "class_type": "PrimitiveBoolean",
+        "_meta": {
+          "title": "是否转换为文生数字人？"
+        }
+      },
+      "387": {
+        "inputs": {
+          "value": "a*25+25",
+          "a": [
+            "308",
+            0
+          ]
+        },
+        "class_type": "SimpleMath+",
+        "_meta": {
+          "title": "🔧 Simple Math"
+        }
+      },
+      "390": {
+        "inputs": {
+          "nag_scale": 11,
+          "nag_alpha": 0.25,
+          "nag_tau": 2.5,
+          "inplace": false,
+          "model": [
+            "268",
+            0
+          ],
+          "nag_cond_video": [
+            "164",
+            1
+          ]
+        },
+        "class_type": "LTX2_NAG",
+        "_meta": {
+          "title": "LTX2 NAG"
+        }
+      },
+      "391": {
+        "inputs": {
+          "audioUI": "",
+          "audio": [
+            "393",
+            0
+          ]
+        },
+        "class_type": "PreviewAudio",
+        "_meta": {
+          "title": "Preview Audio"
+        }
+      },
+      "392": {
+        "inputs": {
+          "resize_type": "scale by multiplier",
+          "resize_type.scale": 2,
+          "quality": "ULTRA",
+          "images": [
+            "278",
+            0
+          ]
+        },
+        "class_type": "RTXVideoSuperResolution",
+        "_meta": {
+          "title": "RTX Video Super Resolution"
+        }
+      },
+      "393": {
+        "inputs": {
+          "audio": "",
+          "audioUI": ""
+        },
+        "class_type": "LoadAudio",
+        "_meta": {
+          "title": "Load Audio"
+        }
+      },
+      "394": {
+        "inputs": {
+          "audio": [
+            "393",
+            0
+          ]
+        },
+        "class_type": "RH_GetAudioDuration",
+        "_meta": {
+          "title": "RH Get Audio Duration"
+        }
+      },
+      "397": {
+        "inputs": {
+          "image": [
+            "329",
+            0
+          ]
+        },
+        "class_type": "GetImageSize",
+        "_meta": {
+          "title": "Get Image Size"
+        }
+      },
+      "398": {
+        "inputs": {
+          "value": "a/2",
+          "a": [
+            "397",
+            1
+          ]
+        },
+        "class_type": "SimpleMath+",
+        "_meta": {
+          "title": "🔧 Simple Math"
+        }
+      }
+    },
+    "workflowHash": "0002b969b3807a3fb0bdcaec63366d07660230a2704f0db20ef155753f5e7fb4"
+  },
+  "profile": {
+    "name": "LTX2.3数字人",
+    "parameters": [
+      {
+        "key": "153.cfg",
+        "nodeId": "153",
+        "fieldName": "cfg",
+        "classType": "CFGGuider",
+        "nodeTitle": "CFG Guider",
+        "valueType": "integer",
+        "semanticType": "cfg",
+        "defaultValue": 1,
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "cfg",
+        "visible": false
+      },
+      {
+        "key": "154.sampler_name",
+        "nodeId": "154",
+        "fieldName": "sampler_name",
+        "classType": "KSamplerSelect",
+        "nodeTitle": "KSamplerSelect",
+        "valueType": "select",
+        "semanticType": "sampler",
+        "defaultValue": "euler",
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "sampler",
+        "visible": false
+      },
+      {
+        "key": "155.text_encoder",
+        "nodeId": "155",
+        "fieldName": "text_encoder",
+        "classType": "LTXAVTextEncoderLoader",
+        "nodeTitle": "Load LTXV Audio Text Encoder",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "gemma_3_12B_it_fp8_e4m3fn.safetensors",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "155_text_encoder",
+        "visible": false
+      },
+      {
+        "key": "155.ckpt_name",
+        "nodeId": "155",
+        "fieldName": "ckpt_name",
+        "classType": "LTXAVTextEncoderLoader",
+        "nodeTitle": "Load LTXV Audio Text Encoder",
+        "valueType": "select",
+        "semanticType": "model",
+        "defaultValue": "ltx-2.3-22b-dev.safetensors",
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "model",
+        "visible": false
+      },
+      {
+        "key": "155.device",
+        "nodeId": "155",
+        "fieldName": "device",
+        "classType": "LTXAVTextEncoderLoader",
+        "nodeTitle": "Load LTXV Audio Text Encoder",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "default",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "155_device",
+        "visible": false
+      },
+      {
+        "key": "162.batch_size",
+        "nodeId": "162",
+        "fieldName": "batch_size",
+        "classType": "EmptyLTXVLatentVideo",
+        "nodeTitle": "Empty LTXV Latent Video",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 1,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "162_batch_size",
+        "visible": false
+      },
+      {
+        "key": "164.frame_rate",
+        "nodeId": "164",
+        "fieldName": "frame_rate",
+        "classType": "LTXVConditioning",
+        "nodeTitle": "LTXVConditioning",
+        "valueType": "integer",
+        "semanticType": "fps",
+        "defaultValue": 25,
+        "confidence": 0.82,
+        "showEnableToggle": false,
+        "id": "fps",
+        "visible": false
+      },
+      {
+        "key": "165.text",
+        "nodeId": "165",
+        "fieldName": "text",
+        "classType": "CLIPTextEncode",
+        "nodeTitle": "CLIP Text Encode (Prompt)",
+        "valueType": "string",
+        "semanticType": "prompt",
+        "defaultValue": "",
+        "confidence": 0.78,
+        "showEnableToggle": false,
+        "id": "prompt",
+        "visible": false
+      },
+      {
+        "key": "169.text",
+        "nodeId": "169",
+        "fieldName": "text",
+        "classType": "CLIPTextEncode",
+        "nodeTitle": "CLIP Text Encode (Prompt)",
+        "valueType": "string",
+        "semanticType": "prompt",
+        "defaultValue": "",
+        "confidence": 0.78,
+        "showEnableToggle": false,
+        "id": "prompt_2",
+        "visible": true
+      },
+      {
+        "key": "171.ckpt_name",
+        "nodeId": "171",
+        "fieldName": "ckpt_name",
+        "classType": "LTXVAudioVAELoader",
+        "nodeTitle": "Load LTXV Audio VAE",
+        "valueType": "select",
+        "semanticType": "model",
+        "defaultValue": "ltx-2.3-22b-dev.safetensors",
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "model_2",
+        "visible": false
+      },
+      {
+        "key": "178.noise_seed",
+        "nodeId": "178",
+        "fieldName": "noise_seed",
+        "classType": "RandomNoise",
+        "nodeTitle": "RandomNoise",
+        "valueType": "integer",
+        "semanticType": "seed",
+        "defaultValue": 131,
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "seed",
+        "visible": false
+      },
+      {
+        "key": "184.ckpt_name",
+        "nodeId": "184",
+        "fieldName": "ckpt_name",
+        "classType": "CheckpointLoaderSimple",
+        "nodeTitle": "Load Checkpoint",
+        "valueType": "select",
+        "semanticType": "model",
+        "defaultValue": "ltx-2.3-22b-distilled-1.1-42.9G.safetensors",
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "model_3",
+        "visible": false
+      },
+      {
+        "key": "190.frame_rate",
+        "nodeId": "190",
+        "fieldName": "frame_rate",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "integer",
+        "semanticType": "fps",
+        "defaultValue": 25,
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "fps_2",
+        "visible": false
+      },
+      {
+        "key": "190.loop_count",
+        "nodeId": "190",
+        "fieldName": "loop_count",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 0,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_loop_count",
+        "visible": false
+      },
+      {
+        "key": "190.filename_prefix",
+        "nodeId": "190",
+        "fieldName": "filename_prefix",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "LTX-2",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_filename_prefix",
+        "visible": false
+      },
+      {
+        "key": "190.format",
+        "nodeId": "190",
+        "fieldName": "format",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "video/h264-mp4",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_format",
+        "visible": false
+      },
+      {
+        "key": "190.pix_fmt",
+        "nodeId": "190",
+        "fieldName": "pix_fmt",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "yuv420p",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_pix_fmt",
+        "visible": false
+      },
+      {
+        "key": "190.crf",
+        "nodeId": "190",
+        "fieldName": "crf",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 19,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_crf",
+        "visible": false
+      },
+      {
+        "key": "190.save_metadata",
+        "nodeId": "190",
+        "fieldName": "save_metadata",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": true,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_save_metadata",
+        "visible": false
+      },
+      {
+        "key": "190.trim_to_audio",
+        "nodeId": "190",
+        "fieldName": "trim_to_audio",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_trim_to_audio",
+        "visible": false
+      },
+      {
+        "key": "190.pingpong",
+        "nodeId": "190",
+        "fieldName": "pingpong",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_pingpong",
+        "visible": false
+      },
+      {
+        "key": "190.save_output",
+        "nodeId": "190",
+        "fieldName": "save_output",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": true,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_save_output",
+        "visible": false
+      },
+      {
+        "key": "190.no_preview",
+        "nodeId": "190",
+        "fieldName": "no_preview",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_no_preview",
+        "visible": false
+      },
+      {
+        "key": "234.tile_size",
+        "nodeId": "234",
+        "fieldName": "tile_size",
+        "classType": "VAEDecodeTiled",
+        "nodeTitle": "VAE Decode (Tiled)",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 512,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "234_tile_size",
+        "visible": false
+      },
+      {
+        "key": "234.overlap",
+        "nodeId": "234",
+        "fieldName": "overlap",
+        "classType": "VAEDecodeTiled",
+        "nodeTitle": "VAE Decode (Tiled)",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 64,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "234_overlap",
+        "visible": false
+      },
+      {
+        "key": "234.temporal_size",
+        "nodeId": "234",
+        "fieldName": "temporal_size",
+        "classType": "VAEDecodeTiled",
+        "nodeTitle": "VAE Decode (Tiled)",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 4096,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "234_temporal_size",
+        "visible": false
+      },
+      {
+        "key": "234.temporal_overlap",
+        "nodeId": "234",
+        "fieldName": "temporal_overlap",
+        "classType": "VAEDecodeTiled",
+        "nodeTitle": "VAE Decode (Tiled)",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 8,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "234_temporal_overlap",
+        "visible": false
+      },
+      {
+        "key": "238.scheduler",
+        "nodeId": "238",
+        "fieldName": "scheduler",
+        "classType": "BasicScheduler",
+        "nodeTitle": "BasicScheduler",
+        "valueType": "select",
+        "semanticType": "scheduler",
+        "defaultValue": "simple",
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "scheduler",
+        "visible": false
+      },
+      {
+        "key": "238.steps",
+        "nodeId": "238",
+        "fieldName": "steps",
+        "classType": "BasicScheduler",
+        "nodeTitle": "BasicScheduler",
+        "valueType": "integer",
+        "semanticType": "steps",
+        "defaultValue": 4,
+        "confidence": 0.82,
+        "showEnableToggle": false,
+        "id": "steps",
+        "visible": false
+      },
+      {
+        "key": "238.denoise",
+        "nodeId": "238",
+        "fieldName": "denoise",
+        "classType": "BasicScheduler",
+        "nodeTitle": "BasicScheduler",
+        "valueType": "integer",
+        "semanticType": "denoise",
+        "defaultValue": 1,
+        "confidence": 0.82,
+        "showEnableToggle": false,
+        "id": "denoise",
+        "visible": false
+      },
+      {
+        "key": "249.value",
+        "nodeId": "249",
+        "fieldName": "value",
+        "classType": "SolidMask",
+        "nodeTitle": "Create Solid Mask",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 0,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "249_value",
+        "visible": false
+      },
+      {
+        "key": "268.sage_attention",
+        "nodeId": "268",
+        "fieldName": "sage_attention",
+        "classType": "PathchSageAttentionKJ",
+        "nodeTitle": "Patch Sage Attention KJ",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "auto",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "268_sage_attention",
+        "visible": false
+      },
+      {
+        "key": "268.allow_compile",
+        "nodeId": "268",
+        "fieldName": "allow_compile",
+        "classType": "PathchSageAttentionKJ",
+        "nodeTitle": "Patch Sage Attention KJ",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "268_allow_compile",
+        "visible": false
+      },
+      {
+        "key": "292.seed",
+        "nodeId": "292",
+        "fieldName": "seed",
+        "classType": "KSampler",
+        "nodeTitle": "KSampler",
+        "valueType": "integer",
+        "semanticType": "seed",
+        "defaultValue": 492008784595040,
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "seed_2",
+        "visible": false
+      },
+      {
+        "key": "292.steps",
+        "nodeId": "292",
+        "fieldName": "steps",
+        "classType": "KSampler",
+        "nodeTitle": "KSampler",
+        "valueType": "integer",
+        "semanticType": "steps",
+        "defaultValue": 4,
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "steps_2",
+        "visible": false
+      },
+      {
+        "key": "292.cfg",
+        "nodeId": "292",
+        "fieldName": "cfg",
+        "classType": "KSampler",
+        "nodeTitle": "KSampler",
+        "valueType": "integer",
+        "semanticType": "cfg",
+        "defaultValue": 1,
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "cfg_2",
+        "visible": false
+      },
+      {
+        "key": "292.sampler_name",
+        "nodeId": "292",
+        "fieldName": "sampler_name",
+        "classType": "KSampler",
+        "nodeTitle": "KSampler",
+        "valueType": "select",
+        "semanticType": "sampler",
+        "defaultValue": "euler",
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "sampler_2",
+        "visible": false
+      },
+      {
+        "key": "292.scheduler",
+        "nodeId": "292",
+        "fieldName": "scheduler",
+        "classType": "KSampler",
+        "nodeTitle": "KSampler",
+        "valueType": "select",
+        "semanticType": "scheduler",
+        "defaultValue": "simple",
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "scheduler_2",
+        "visible": false
+      },
+      {
+        "key": "292.denoise",
+        "nodeId": "292",
+        "fieldName": "denoise",
+        "classType": "KSampler",
+        "nodeTitle": "KSampler",
+        "valueType": "number",
+        "semanticType": "denoise",
+        "defaultValue": 0.4,
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "denoise_2",
+        "visible": false
+      },
+      {
+        "key": "295.model_name",
+        "nodeId": "295",
+        "fieldName": "model_name",
+        "classType": "LatentUpscaleModelLoader",
+        "nodeTitle": "Load Latent Upscale Model",
+        "valueType": "select",
+        "semanticType": "model",
+        "defaultValue": "ltx-2.3-spatial-upscaler-x2-1.1.safetensors",
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "model_4",
+        "visible": false
+      },
+      {
+        "key": "304.strength",
+        "nodeId": "304",
+        "fieldName": "strength",
+        "classType": "LTXVImgToVideoInplace",
+        "nodeTitle": "LTXVImgToVideoInplace",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 1,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "304_strength",
+        "visible": false
+      },
+      {
+        "key": "311.text",
+        "nodeId": "311",
+        "fieldName": "text",
+        "classType": "easy showAnything",
+        "nodeTitle": "Show Any",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "750",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "311_text",
+        "visible": false
+      },
+      {
+        "key": "312.preview_rate",
+        "nodeId": "312",
+        "fieldName": "preview_rate",
+        "classType": "LTX2SamplingPreviewOverride",
+        "nodeTitle": "LTX2 Sampling Preview Override",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 8,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "312_preview_rate",
+        "visible": false
+      },
+      {
+        "key": "317.value",
+        "nodeId": "317",
+        "fieldName": "value",
+        "classType": "SimpleMath+",
+        "nodeTitle": "🔧 Simple Math",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "a/2",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "317_value",
+        "visible": false
+      },
+      {
+        "key": "327.image",
+        "nodeId": "327",
+        "fieldName": "image",
+        "classType": "LoadImage",
+        "nodeTitle": "Load Image",
+        "valueType": "image",
+        "semanticType": "image",
+        "defaultValue": "",
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "image",
+        "visible": true
+      },
+      {
+        "key": "329.longer_edge",
+        "nodeId": "329",
+        "fieldName": "longer_edge",
+        "classType": "ResizeImagesByLongerEdge",
+        "nodeTitle": "Resize Images by Longer Edge (DEPRECATED)",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 1280,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "329_longer_edge",
+        "visible": false
+      },
+      {
+        "key": "330.img_compression",
+        "nodeId": "330",
+        "fieldName": "img_compression",
+        "classType": "LTXVPreprocess",
+        "nodeTitle": "LTXV Preprocess",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 18,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "330_img_compression",
+        "visible": false
+      },
+      {
+        "key": "335.strength",
+        "nodeId": "335",
+        "fieldName": "strength",
+        "classType": "LTXVImgToVideoInplace",
+        "nodeTitle": "LTXVImgToVideoInplace",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 1,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "335_strength",
+        "visible": false
+      },
+      {
+        "key": "386.value",
+        "nodeId": "386",
+        "fieldName": "value",
+        "classType": "PrimitiveBoolean",
+        "nodeTitle": "是否转换为文生数字人？",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "386_value",
+        "visible": false
+      },
+      {
+        "key": "387.value",
+        "nodeId": "387",
+        "fieldName": "value",
+        "classType": "SimpleMath+",
+        "nodeTitle": "🔧 Simple Math",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "a*25+25",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "387_value",
+        "visible": false
+      },
+      {
+        "key": "390.nag_scale",
+        "nodeId": "390",
+        "fieldName": "nag_scale",
+        "classType": "LTX2_NAG",
+        "nodeTitle": "LTX2 NAG",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 11,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "390_nag_scale",
+        "visible": false
+      },
+      {
+        "key": "390.nag_alpha",
+        "nodeId": "390",
+        "fieldName": "nag_alpha",
+        "classType": "LTX2_NAG",
+        "nodeTitle": "LTX2 NAG",
+        "valueType": "number",
+        "semanticType": "unknown",
+        "defaultValue": 0.25,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "390_nag_alpha",
+        "visible": false
+      },
+      {
+        "key": "390.nag_tau",
+        "nodeId": "390",
+        "fieldName": "nag_tau",
+        "classType": "LTX2_NAG",
+        "nodeTitle": "LTX2 NAG",
+        "valueType": "number",
+        "semanticType": "unknown",
+        "defaultValue": 2.5,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "390_nag_tau",
+        "visible": false
+      },
+      {
+        "key": "390.inplace",
+        "nodeId": "390",
+        "fieldName": "inplace",
+        "classType": "LTX2_NAG",
+        "nodeTitle": "LTX2 NAG",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "390_inplace",
+        "visible": false
+      },
+      {
+        "key": "391.audioUI",
+        "nodeId": "391",
+        "fieldName": "audioUI",
+        "classType": "PreviewAudio",
+        "nodeTitle": "Preview Audio",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "391_audioUI",
+        "visible": false
+      },
+      {
+        "key": "392.resize_type",
+        "nodeId": "392",
+        "fieldName": "resize_type",
+        "classType": "RTXVideoSuperResolution",
+        "nodeTitle": "RTX Video Super Resolution",
+        "valueType": "string",
+        "semanticType": "resolution",
+        "defaultValue": "scale by multiplier",
+        "confidence": 0.74,
+        "showEnableToggle": false,
+        "id": "resolution",
+        "visible": false
+      },
+      {
+        "key": "392.resize_type.scale",
+        "nodeId": "392",
+        "fieldName": "resize_type.scale",
+        "classType": "RTXVideoSuperResolution",
+        "nodeTitle": "RTX Video Super Resolution",
+        "valueType": "integer",
+        "semanticType": "resolution",
+        "defaultValue": 2,
+        "confidence": 0.86,
+        "showEnableToggle": false,
+        "id": "392_resize_type.scale",
+        "visible": false
+      },
+      {
+        "key": "392.quality",
+        "nodeId": "392",
+        "fieldName": "quality",
+        "classType": "RTXVideoSuperResolution",
+        "nodeTitle": "RTX Video Super Resolution",
+        "valueType": "string",
+        "semanticType": "resolution",
+        "defaultValue": "ULTRA",
+        "confidence": 0.74,
+        "showEnableToggle": false,
+        "id": "resolution_2",
+        "visible": false
+      },
+      {
+        "key": "393.audio",
+        "nodeId": "393",
+        "fieldName": "audio",
+        "classType": "LoadAudio",
+        "nodeTitle": "Load Audio",
+        "valueType": "audio",
+        "semanticType": "audio",
+        "defaultValue": "",
+        "confidence": 0.96,
+        "showEnableToggle": false,
+        "id": "audio",
+        "visible": true
+      },
+      {
+        "key": "393.audioUI",
+        "nodeId": "393",
+        "fieldName": "audioUI",
+        "classType": "LoadAudio",
+        "nodeTitle": "Load Audio",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "393_audioUI",
+        "visible": false
+      },
+      {
+        "key": "398.value",
+        "nodeId": "398",
+        "fieldName": "value",
+        "classType": "SimpleMath+",
+        "nodeTitle": "🔧 Simple Math",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "a/2",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "398_value",
+        "visible": false
+      }
+    ],
+    "genericParameters": [
+      {
+        "key": "155.text_encoder",
+        "nodeId": "155",
+        "fieldName": "text_encoder",
+        "classType": "LTXAVTextEncoderLoader",
+        "nodeTitle": "Load LTXV Audio Text Encoder",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "gemma_3_12B_it_fp8_e4m3fn.safetensors",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "155_text_encoder",
+        "visible": false
+      },
+      {
+        "key": "155.device",
+        "nodeId": "155",
+        "fieldName": "device",
+        "classType": "LTXAVTextEncoderLoader",
+        "nodeTitle": "Load LTXV Audio Text Encoder",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "default",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "155_device",
+        "visible": false
+      },
+      {
+        "key": "162.batch_size",
+        "nodeId": "162",
+        "fieldName": "batch_size",
+        "classType": "EmptyLTXVLatentVideo",
+        "nodeTitle": "Empty LTXV Latent Video",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 1,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "162_batch_size",
+        "visible": false
+      },
+      {
+        "key": "190.loop_count",
+        "nodeId": "190",
+        "fieldName": "loop_count",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 0,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_loop_count",
+        "visible": false
+      },
+      {
+        "key": "190.filename_prefix",
+        "nodeId": "190",
+        "fieldName": "filename_prefix",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "LTX-2",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_filename_prefix",
+        "visible": false
+      },
+      {
+        "key": "190.format",
+        "nodeId": "190",
+        "fieldName": "format",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "video/h264-mp4",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_format",
+        "visible": false
+      },
+      {
+        "key": "190.pix_fmt",
+        "nodeId": "190",
+        "fieldName": "pix_fmt",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "yuv420p",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_pix_fmt",
+        "visible": false
+      },
+      {
+        "key": "190.crf",
+        "nodeId": "190",
+        "fieldName": "crf",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 19,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_crf",
+        "visible": false
+      },
+      {
+        "key": "190.save_metadata",
+        "nodeId": "190",
+        "fieldName": "save_metadata",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": true,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_save_metadata",
+        "visible": false
+      },
+      {
+        "key": "190.trim_to_audio",
+        "nodeId": "190",
+        "fieldName": "trim_to_audio",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_trim_to_audio",
+        "visible": false
+      },
+      {
+        "key": "190.pingpong",
+        "nodeId": "190",
+        "fieldName": "pingpong",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_pingpong",
+        "visible": false
+      },
+      {
+        "key": "190.save_output",
+        "nodeId": "190",
+        "fieldName": "save_output",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": true,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_save_output",
+        "visible": false
+      },
+      {
+        "key": "190.no_preview",
+        "nodeId": "190",
+        "fieldName": "no_preview",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "190_no_preview",
+        "visible": false
+      },
+      {
+        "key": "234.tile_size",
+        "nodeId": "234",
+        "fieldName": "tile_size",
+        "classType": "VAEDecodeTiled",
+        "nodeTitle": "VAE Decode (Tiled)",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 512,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "234_tile_size",
+        "visible": false
+      },
+      {
+        "key": "234.overlap",
+        "nodeId": "234",
+        "fieldName": "overlap",
+        "classType": "VAEDecodeTiled",
+        "nodeTitle": "VAE Decode (Tiled)",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 64,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "234_overlap",
+        "visible": false
+      },
+      {
+        "key": "234.temporal_size",
+        "nodeId": "234",
+        "fieldName": "temporal_size",
+        "classType": "VAEDecodeTiled",
+        "nodeTitle": "VAE Decode (Tiled)",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 4096,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "234_temporal_size",
+        "visible": false
+      },
+      {
+        "key": "234.temporal_overlap",
+        "nodeId": "234",
+        "fieldName": "temporal_overlap",
+        "classType": "VAEDecodeTiled",
+        "nodeTitle": "VAE Decode (Tiled)",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 8,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "234_temporal_overlap",
+        "visible": false
+      },
+      {
+        "key": "249.value",
+        "nodeId": "249",
+        "fieldName": "value",
+        "classType": "SolidMask",
+        "nodeTitle": "Create Solid Mask",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 0,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "249_value",
+        "visible": false
+      },
+      {
+        "key": "268.sage_attention",
+        "nodeId": "268",
+        "fieldName": "sage_attention",
+        "classType": "PathchSageAttentionKJ",
+        "nodeTitle": "Patch Sage Attention KJ",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "auto",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "268_sage_attention",
+        "visible": false
+      },
+      {
+        "key": "268.allow_compile",
+        "nodeId": "268",
+        "fieldName": "allow_compile",
+        "classType": "PathchSageAttentionKJ",
+        "nodeTitle": "Patch Sage Attention KJ",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "268_allow_compile",
+        "visible": false
+      },
+      {
+        "key": "304.strength",
+        "nodeId": "304",
+        "fieldName": "strength",
+        "classType": "LTXVImgToVideoInplace",
+        "nodeTitle": "LTXVImgToVideoInplace",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 1,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "304_strength",
+        "visible": false
+      },
+      {
+        "key": "311.text",
+        "nodeId": "311",
+        "fieldName": "text",
+        "classType": "easy showAnything",
+        "nodeTitle": "Show Any",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "750",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "311_text",
+        "visible": false
+      },
+      {
+        "key": "312.preview_rate",
+        "nodeId": "312",
+        "fieldName": "preview_rate",
+        "classType": "LTX2SamplingPreviewOverride",
+        "nodeTitle": "LTX2 Sampling Preview Override",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 8,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "312_preview_rate",
+        "visible": false
+      },
+      {
+        "key": "317.value",
+        "nodeId": "317",
+        "fieldName": "value",
+        "classType": "SimpleMath+",
+        "nodeTitle": "🔧 Simple Math",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "a/2",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "317_value",
+        "visible": false
+      },
+      {
+        "key": "329.longer_edge",
+        "nodeId": "329",
+        "fieldName": "longer_edge",
+        "classType": "ResizeImagesByLongerEdge",
+        "nodeTitle": "Resize Images by Longer Edge (DEPRECATED)",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 1280,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "329_longer_edge",
+        "visible": false
+      },
+      {
+        "key": "330.img_compression",
+        "nodeId": "330",
+        "fieldName": "img_compression",
+        "classType": "LTXVPreprocess",
+        "nodeTitle": "LTXV Preprocess",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 18,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "330_img_compression",
+        "visible": false
+      },
+      {
+        "key": "335.strength",
+        "nodeId": "335",
+        "fieldName": "strength",
+        "classType": "LTXVImgToVideoInplace",
+        "nodeTitle": "LTXVImgToVideoInplace",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 1,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "335_strength",
+        "visible": false
+      },
+      {
+        "key": "386.value",
+        "nodeId": "386",
+        "fieldName": "value",
+        "classType": "PrimitiveBoolean",
+        "nodeTitle": "是否转换为文生数字人？",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "386_value",
+        "visible": false
+      },
+      {
+        "key": "387.value",
+        "nodeId": "387",
+        "fieldName": "value",
+        "classType": "SimpleMath+",
+        "nodeTitle": "🔧 Simple Math",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "a*25+25",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "387_value",
+        "visible": false
+      },
+      {
+        "key": "390.nag_scale",
+        "nodeId": "390",
+        "fieldName": "nag_scale",
+        "classType": "LTX2_NAG",
+        "nodeTitle": "LTX2 NAG",
+        "valueType": "integer",
+        "semanticType": "unknown",
+        "defaultValue": 11,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "390_nag_scale",
+        "visible": false
+      },
+      {
+        "key": "390.nag_alpha",
+        "nodeId": "390",
+        "fieldName": "nag_alpha",
+        "classType": "LTX2_NAG",
+        "nodeTitle": "LTX2 NAG",
+        "valueType": "number",
+        "semanticType": "unknown",
+        "defaultValue": 0.25,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "390_nag_alpha",
+        "visible": false
+      },
+      {
+        "key": "390.nag_tau",
+        "nodeId": "390",
+        "fieldName": "nag_tau",
+        "classType": "LTX2_NAG",
+        "nodeTitle": "LTX2 NAG",
+        "valueType": "number",
+        "semanticType": "unknown",
+        "defaultValue": 2.5,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "390_nag_tau",
+        "visible": false
+      },
+      {
+        "key": "390.inplace",
+        "nodeId": "390",
+        "fieldName": "inplace",
+        "classType": "LTX2_NAG",
+        "nodeTitle": "LTX2 NAG",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "390_inplace",
+        "visible": false
+      },
+      {
+        "key": "391.audioUI",
+        "nodeId": "391",
+        "fieldName": "audioUI",
+        "classType": "PreviewAudio",
+        "nodeTitle": "Preview Audio",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "391_audioUI",
+        "visible": false
+      },
+      {
+        "key": "393.audioUI",
+        "nodeId": "393",
+        "fieldName": "audioUI",
+        "classType": "LoadAudio",
+        "nodeTitle": "Load Audio",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "393_audioUI",
+        "visible": false
+      },
+      {
+        "key": "398.value",
+        "nodeId": "398",
+        "fieldName": "value",
+        "classType": "SimpleMath+",
+        "nodeTitle": "🔧 Simple Math",
+        "valueType": "string",
+        "semanticType": "unknown",
+        "defaultValue": "a/2",
+        "confidence": 0.2,
+        "showEnableToggle": false,
+        "id": "398_value",
+        "visible": false
+      }
+    ],
+    "needsReview": false,
+    "outputs": [
+      {
+        "id": "output_190",
+        "nodeId": "190",
+        "classType": "VHS_VideoCombine",
+        "nodeTitle": "Video Combine 🎥🅥🅗🅢",
+        "mediaType": "video",
+        "label": "LTX-2",
+        "filenamePrefix": "LTX-2",
+        "saveOutput": true,
+        "stage": 1
+      },
+      {
+        "id": "output_391",
+        "nodeId": "391",
+        "classType": "PreviewAudio",
+        "nodeTitle": "Preview Audio",
+        "mediaType": "audio",
+        "label": "Preview Audio",
+        "stage": 1
+      }
+    ],
+    "functionDescription": "LTX 2.3 图像与音频驱动数字人。根据人物图片、语音和表演描述生成对口型人物视频。",
+    "usageInstructions": "上传人物图片和音频，再填写人物动作、表情和镜头要求；建议使用正脸或半身清晰图片，音频保持人声清楚、背景噪声较少。",
+    "revision": 4
+  },
+  "compatibility": {
+    "profileSchemaVersion": 1,
+    "detectorVersion": 1,
+    "minimumAppVersion": "0.1.0"
+  }
+}

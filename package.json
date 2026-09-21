@@ -1,0 +1,48 @@
+{
+  "name": "runninghub-multi-task-runner-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Renderer-independent RunningHub multi-workflow, multi-job, multi-account backend core",
+  "files": [
+    "dist/",
+    "frontend/dist/",
+    "desktop/preload.cjs",
+    "bundled-workflows/",
+    "THIRD_PARTY_LICENSES/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run licenses:check && npm run package:verify && npm run native:node --silent && tsx --test tests/*.test.ts",
+    "test:integration": "tsx scripts/integration.ts",
+    "dev": "tsx scripts/dev.ts",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:typecheck": "npm --prefix frontend run typecheck",
+    "frontend:build": "npm --prefix frontend run build",
+    "desktop:build": "npm run frontend:build && npm run build",
+    "desktop:launch": "electron dist/src/desktop/main.js",
+    "native:node": "npm rebuild better-sqlite3",
+    "native:electron": "electron-rebuild -f -w better-sqlite3",
+    "desktop:start": "npm run desktop:build && electron dist/src/desktop/main.js",
+    "desktop:smoke": "npm run desktop:build && npm run native:electron && electron dist/src/desktop/main.js --smoke",
+    "licenses:generate": "node scripts/generate-third-party-licenses.mjs",
+    "licenses:check": "node scripts/generate-third-party-licenses.mjs --check",
+    "package:verify": "node scripts/verify-package-boundaries.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.5.2",
+    "electron": "^44.4.3",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  }
+}

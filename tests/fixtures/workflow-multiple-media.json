@@ -1,0 +1,5 @@
+{
+  "10": { "class_type": "LoadImage", "inputs": { "image": "input.png" } },
+  "11": { "class_type": "LoadVideo", "inputs": { "video": "input.mp4" } },
+  "12": { "class_type": "LoadAudio", "inputs": { "audio": "input.wav" } }
+}

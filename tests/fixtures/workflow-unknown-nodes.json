@@ -1,0 +1,7 @@
+{
+  "99": {
+    "class_type": "FutureVideoNode",
+    "inputs": { "foo": 12, "bar": true, "mode": "fast", "source": ["1", 0] },
+    "_meta": { "title": "Future Controls" }
+  }
+}

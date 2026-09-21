@@ -1,0 +1,17 @@
+{
+  "10": {
+    "class_type": "OptionalImageUpload",
+    "inputs": { "image": "default.png", "enabled": false },
+    "_meta": { "title": "Image 1 Upload" }
+  },
+  "20": {
+    "class_type": "LoadAudio",
+    "inputs": { "audio": "default.wav" },
+    "_meta": { "title": "Audio 1" }
+  },
+  "21": {
+    "class_type": "BooleanSwitch",
+    "inputs": { "value": false },
+    "_meta": { "title": "Enable Audio 1" }
+  }
+}
