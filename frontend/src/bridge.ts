@@ -53,7 +53,12 @@ export interface RunningHubRendererBridge {
     create(input: CreateJobDraft): Promise<JobView>;
     createBatch(inputs: CreateJobDraft[]): Promise<JobView[]>;
     cancel(id: string): Promise<JobView>;
+    retryDownload(id: string): Promise<JobView>;
     remove(id: string): Promise<boolean>;
+  };
+  events: {
+    onAccountUpdated(listener: (account: AccountView) => void): () => void;
+    onJobUpdated(listener: (job: JobView) => void): () => void;
   };
   scheduler: {
     start(): Promise<void>;

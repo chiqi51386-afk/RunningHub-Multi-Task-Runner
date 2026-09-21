@@ -22,9 +22,10 @@ test("job freezes workflow profile and account/job claim is atomic", () => {
     const wf = workflows.importApiJson({ name: "A", runningHubWorkflowId: "123456789012", workflow });
     const job = jobs.create({ workflowId: wf.id, parameters: { prompt: "snapshot" } });
     const changed = structuredClone(wf.profile);
-    changed.parameters[0]!.fieldName = "other";
+    changed.parameters[0]!.label = "Updated label";
     workflows.updateProfile(wf.id, changed);
     assert.equal(jobs.get(job.id)?.profileSnapshot.parameters[0]?.fieldName, "text");
+    assert.equal(jobs.get(job.id)?.profileSnapshot.parameters[0]?.label, undefined);
 
     const account = db.addAccount("A", "key-a");
     db.updateAccount(account.id, { state: "IDLE" });
@@ -54,6 +55,21 @@ test("illegal job state transitions are rejected", () => {
     const wf = workflows.importApiJson({ name: "A", runningHubWorkflowId: "123456789012", workflow });
     const job = jobs.create({ workflowId: wf.id, parameters: {} });
     assert.throws(() => jobs.transition(job.id, "COMPLETED"), /Illegal job transition/);
+  } finally { db.close(); }
+});
+
+test("zero-credit accounts cannot be selected or claim a job", () => {
+  const db = new CoreDatabase(":memory:", new InMemorySecretStore());
+  const events = new BackendEvents();
+  const workflows = new Workflows(db, events);
+  const jobs = new Jobs(db, events);
+  try {
+    const account = db.addAccount("Empty", "empty-key");
+    db.updateAccount(account.id, { state: "IDLE", coins: "0", balance: "100" });
+    const wf = workflows.importApiJson({ name: "A", runningHubWorkflowId: "123456789012", workflow });
+    jobs.create({ workflowId: wf.id, parameters: {} });
+    assert.equal(db.listAvailableAccounts().length, 0);
+    assert.equal(db.claimNextJob(account.id), undefined);
   } finally { db.close(); }
 });
 
@@ -174,6 +190,25 @@ test("orphaned account claims are cleared when their task record no longer exist
     assert.equal(repaired.getAccount(accountId)?.state, "IDLE");
     assert.equal(repaired.getAccount(accountId)?.currentJobId, undefined);
     repaired.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("startup recovery leaves a released zero-credit account unavailable", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "rh-zero-credit-recovery-"));
+  const filename = path.join(directory, "runner.sqlite");
+  try {
+    const first = new CoreDatabase(filename, new InMemorySecretStore());
+    const account = first.addAccount("Empty", "empty-recovery-key");
+    first.updateAccount(account.id, { state: "BUSY", currentJobId: "missing-job", coins: "0" });
+    first.close();
+
+    const recovered = new CoreDatabase(filename, new InMemorySecretStore());
+    assert.equal(recovered.getAccount(account.id)?.currentJobId, undefined);
+    assert.equal(recovered.getAccount(account.id)?.state, "NO_BALANCE");
+    assert.equal(recovered.listAvailableAccounts().length, 0);
+    recovered.close();
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

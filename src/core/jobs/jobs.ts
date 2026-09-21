@@ -10,12 +10,16 @@ const TRANSITIONS: Record<JobStatus, ReadonlySet<JobStatus>> = {
   SUBMIT_UNKNOWN: new Set([]),
   REMOTE_QUEUED: new Set(["RUNNING", "REMOTE_SUCCESS", "RETRY_WAIT", "FAILED", "CANCELLED"]),
   RUNNING: new Set(["REMOTE_QUEUED", "REMOTE_SUCCESS", "RETRY_WAIT", "FAILED", "CANCELLED"]),
-  REMOTE_SUCCESS: new Set(["DOWNLOAD_PENDING", "CANCELLED"]),
+  // Once RunningHub has returned SUCCESS, "stop generation" is no longer a
+  // valid operation.  Keeping CANCELLED out of these transitions prevents a
+  // late cancel response from overwriting a successful result while it is
+  // being queued or downloaded.
+  REMOTE_SUCCESS: new Set(["DOWNLOAD_PENDING"]),
   DOWNLOAD_PENDING: new Set(["DOWNLOADING", "RETRY_WAIT", "FAILED", "CANCELLED"]),
   DOWNLOADING: new Set(["COMPLETED", "DOWNLOAD_PENDING", "RETRY_WAIT", "FAILED", "CANCELLED"]),
   COMPLETED: new Set([]),
   FAILED: new Set([]),
-  RETRY_WAIT: new Set(["REMOTE_QUEUED", "RUNNING", "DOWNLOAD_PENDING", "PENDING", "FAILED", "CANCELLED"]),
+  RETRY_WAIT: new Set(["REMOTE_QUEUED", "RUNNING", "REMOTE_SUCCESS", "DOWNLOAD_PENDING", "PENDING", "FAILED", "CANCELLED"]),
   CANCELLED: new Set([]),
 };
 

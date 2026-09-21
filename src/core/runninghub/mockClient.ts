@@ -79,7 +79,10 @@ export function mockRunningHubError(input: { code?: unknown; message: string; ph
 
 function delay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason ?? new Error("Aborted")); }, { once: true });
+    if (signal?.aborted) return reject(signal.reason ?? new Error("Aborted"));
+    const finish = () => { signal?.removeEventListener("abort", onAbort); resolve(); };
+    const timer = setTimeout(finish, ms);
+    const onAbort = () => { clearTimeout(timer); signal?.removeEventListener("abort", onAbort); reject(signal?.reason ?? new Error("Aborted")); };
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, ArrowRight, BadgeCheck, Boxes, Check, ChevronDown, CircleDollarSign,
   Clock3, CloudUpload, Download, ExternalLink, FileJson, FolderOpen, Gauge, ImagePlus, KeyRound, LayoutDashboard, ListTodo,
@@ -24,7 +24,36 @@ function loadSavedWorkflows(): WorkflowView[] {
 
 function migrateWorkflowView(workflow: WorkflowView): WorkflowView {
   const source = workflow;
-  const parameters = source.parameters.map(parameter => migrateParameterView(parameter, source.id === "wf-h3"));
+  let parameters = source.parameters.map(parameter => migrateParameterView(parameter, source.id === "wf-h3"));
+  // Browser/demo builds can retain an older WorkflowView in localStorage and
+  // do not have the raw API graph available for the backend migration. Repair
+  // the one known historical omission locally so old H3 profiles immediately
+  // show all three ResolutionSelector widgets without asking users to clear
+  // their saved data or re-import the workflow.
+  const resolutionAspect = parameters.find(parameter =>
+    parameter.classType === "ResolutionSelector" && parameter.fieldName === "aspect_ratio");
+  if (resolutionAspect && !parameters.some(parameter =>
+    parameter.classType === "ResolutionSelector" && parameter.fieldName === "multiple")) {
+    parameters = [...parameters, {
+      key: `${resolutionAspect.nodeId}.multiple`,
+      id: parameters.some(parameter => parameter.id === "resolution_multiple")
+        ? `${resolutionAspect.nodeId}_multiple`
+        : "resolution_multiple",
+      nodeId: resolutionAspect.nodeId,
+      fieldName: "multiple",
+      classType: "ResolutionSelector",
+      nodeTitle: resolutionAspect.nodeTitle,
+      valueType: "integer",
+      semanticType: "resolution_multiple",
+      defaultValue: 32,
+      confidence: 1,
+      min: 1,
+      step: 1,
+      visible: true,
+      label: "尺寸倍数",
+      displayOrder: 35,
+    }];
+  }
   return {
     ...source,
     parameters: attachMediaControls(parameters),
@@ -53,13 +82,13 @@ const resolutionSelectorAspectOptions = [
 
 function withBuiltinSchema(parameter: WorkflowParameterView): WorkflowParameterView {
   if (parameter.classType === "ResolutionSelector" && parameter.fieldName === "aspect_ratio") {
-    return { ...parameter, semanticType: "aspect_ratio", valueType: "select", defaultValue: "9:16 (Portrait Widescreen)", options: resolutionSelectorAspectOptions, confidence: 1 };
+    return { ...parameter, semanticType: "aspect_ratio", valueType: "select", defaultValue: "9:16 (Portrait Widescreen)", submitDefault: true, options: resolutionSelectorAspectOptions, confidence: 1, displayOrder: 10 };
   }
   if (parameter.classType === "ResolutionSelector" && parameter.fieldName === "megapixels") {
-    return { ...parameter, semanticType: "resolution", valueType: "number", min: 0.1, max: 16, step: 0.1, confidence: 1 };
+    return { ...parameter, semanticType: "resolution", valueType: "number", min: 0.1, max: 16, step: 0.1, confidence: 1, displayOrder: 30 };
   }
   if (parameter.classType === "ResolutionSelector" && parameter.fieldName === "multiple") {
-    return { ...parameter, semanticType: "resolution_multiple", valueType: "integer", min: 1, step: 1, confidence: 1 };
+    return { ...parameter, semanticType: "resolution_multiple", valueType: "integer", min: 1, step: 1, confidence: 1, displayOrder: 35 };
   }
   return parameter;
 }
@@ -87,6 +116,18 @@ const statusLabel: Record<JobStatus, string> = {
   COMPLETED: "已完成", FAILED: "失败", RETRY_WAIT: "等待重试", CANCELLED: "已取消",
 };
 
+const generationParameterPriority: Partial<Record<WorkflowSemanticType, number>> = {
+  aspect_ratio: 10,
+  duration: 20,
+  resolution: 30,
+  resolution_multiple: 35,
+  upscale_factor: 40,
+};
+
+function generationParameterOrder(parameter: WorkflowParameterView): number {
+  return parameter.displayOrder ?? generationParameterPriority[parameter.semanticType] ?? 999;
+}
+
 const terminalJobStatuses = new Set<JobStatus>(["COMPLETED", "FAILED", "CANCELLED", "SUBMIT_UNKNOWN"]);
 const activeJobStatuses = new Set<JobStatus>(["ASSIGNED", "UPLOADING", "SUBMITTING", "REMOTE_QUEUED", "RUNNING", "REMOTE_SUCCESS", "DOWNLOAD_PENDING", "DOWNLOADING", "RETRY_WAIT"]);
 
@@ -110,6 +151,7 @@ function loadUiPreferences(): UiPreferences {
 function localizedFailureReason(error?: string, status?: JobStatus): string {
   if (status === "SUBMIT_UNKNOWN") return "提交请求的响应丢失，无法确认远端是否已经接收。为避免重复扣费，系统没有自动重发。";
   if (!error) return "远端任务失败，但接口没有返回具体原因。";
+  if (/^\s*(?:\{\}|\[\]|null|undefined|\[object Object\])\s*$/i.test(error)) return "任务状态查询暂时失败，软件会使用原 taskId 自动重试。";
   if (/NODE_INFO_MISMATCH|field_not_found/i.test(error)) return "工作流节点或字段映射不匹配，请重新导入当前版本的 API JSON。";
   if (/required_input_missing|Required input is missing/i.test(error)) return "工作流缺少必填输入，请检查图片、音频、视频或提示词是否已经上传。";
   if (/prompt_outputs_failed_validation|failed validation/i.test(error)) return "工作流参数校验失败，请检查必填输入和节点开关。";
@@ -202,32 +244,31 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!window.runningHub) return;
-    const timer = window.setInterval(() => {
-      void Promise.all([window.runningHub!.accounts.list(), window.runningHub!.jobs.list()])
-        .then(([accountRecords, jobRecords]) => {
-          setAccounts(current => JSON.stringify(current) === JSON.stringify(accountRecords) ? current : accountRecords);
-          setJobs(current => JSON.stringify(current) === JSON.stringify(jobRecords) ? current : jobRecords);
-          for (const job of jobRecords) {
-            const previous = knownJobStatuses.current.get(job.id);
-            if (previous && previous !== job.status && ["COMPLETED", "FAILED", "SUBMIT_UNKNOWN"].includes(job.status)) {
-              const successful = job.status === "COMPLETED";
-              const notice = {
-                id: `${job.id}:${job.status}:${Date.now()}`,
-                jobId: job.id,
-                tone: successful ? "success" : "error",
-                title: successful ? "任务已完成" : "任务失败",
-                message: successful ? job.workflowName : `${job.workflowName}：${localizedFailureReason(job.error, job.status)}`,
-              } as const;
-              setTaskNotice(notice);
-              if (uiPreferencesRef.current.notificationSound) playNotificationSound(notice.tone);
-            }
-            knownJobStatuses.current.set(job.id, job.status);
-          }
-        })
-        .catch(() => undefined);
-    }, 4_000);
-    return () => window.clearInterval(timer);
+    if (!window.runningHub?.events) return;
+    const removeAccountListener = window.runningHub.events.onAccountUpdated(account => {
+      setAccounts(current => current.some(item => item.id === account.id)
+        ? current.map(item => item.id === account.id ? account : item)
+        : [...current, account]);
+    });
+    const removeJobListener = window.runningHub.events.onJobUpdated(job => {
+      setJobs(current => [job, ...current.filter(item => item.id !== job.id)]
+        .sort((left, right) => right.createdAt - left.createdAt));
+      const previous = knownJobStatuses.current.get(job.id);
+      if (previous && previous !== job.status && ["COMPLETED", "FAILED", "SUBMIT_UNKNOWN"].includes(job.status)) {
+        const successful = job.status === "COMPLETED";
+        const notice = {
+          id: `${job.id}:${job.status}:${Date.now()}`,
+          jobId: job.id,
+          tone: successful ? "success" : "error",
+          title: successful ? "任务已完成" : "任务失败",
+          message: successful ? job.workflowName : `${job.workflowName}：${localizedFailureReason(job.error, job.status)}`,
+        } as const;
+        setTaskNotice(notice);
+        if (uiPreferencesRef.current.notificationSound) playNotificationSound(notice.tone);
+      }
+      knownJobStatuses.current.set(job.id, job.status);
+    });
+    return () => { removeAccountListener(); removeJobListener(); };
   }, []);
 
   useEffect(() => {
@@ -319,20 +360,20 @@ function App() {
     }
   }
 
-  async function createJobs(drafts: CreateJobDraft[]): Promise<boolean> {
+  const createJobs = useCallback(async (drafts: CreateJobDraft[]): Promise<boolean> => {
     try {
       if (!drafts.length) return false;
       const created = window.runningHub
         ? await window.runningHub.jobs.createBatch(drafts)
         : drafts.map(draft => {
           const workflow = workflows.find(w => w.id === draft.workflowId) ?? workflows[0];
-          return { id: crypto.randomUUID(), workflowName: workflow.name, status: "PENDING" as const, createdAt: Date.now(), progress: 5, outputType: "MP4" };
+          return { id: crypto.randomUUID(), workflowName: workflow.name, status: "PENDING" as const, createdAt: Date.now(), outputType: "MP4" };
         });
       setJobs(current => [...created, ...current.filter(item => !created.some(job => job.id === item.id))]);
       setView("jobs");
       return true;
     } catch (error) { setAppError(error instanceof Error ? error.message : "任务创建失败"); return false; }
-  }
+  }, [workflows]);
 
   async function toggleScheduler() {
     const next = !schedulerRunning;
@@ -474,7 +515,7 @@ function Accounts({ accounts, refreshing, onRefresh, onRefreshAll, onAdd, onReke
           <strong className="coin-value">{account.coins ?? "—"}</strong>
           <span className="mono-label">{account.apiType ?? "—"}</span>
           <span className="muted">{relativeTime(account.lastCheckedAt)}</span>
-          <div className="row-actions"><button className="icon-button" onClick={() => onRefresh(account.id)} disabled={Boolean(refreshing)} title="检测账号">{refreshing === account.id ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}</button><button className="icon-button" onClick={() => onRekey(account)} title="重新录入 API Key"><KeyRound size={16} /></button><button className={`switch ${account.enabled ? "checked" : ""}`} onClick={() => onToggle(account.id)} aria-label={account.enabled ? "停用账号" : "启用账号"}><span /></button><button className="icon-button danger" onClick={() => onRemove(account.id)} title="删除账号"><Trash2 size={16} /></button></div>
+          <div className="row-actions"><button className="icon-button" onClick={() => onRefresh(account.id)} disabled={Boolean(refreshing)} title="检测账号">{refreshing === account.id ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}</button><button className="icon-button" onClick={() => onRekey(account)} disabled={Boolean(account.currentJobId)} title={account.currentJobId ? "当前账号正在执行任务，不能更换 API Key" : "重新录入 API Key"}><KeyRound size={16} /></button><button className={`switch ${account.enabled ? "checked" : ""}`} onClick={() => onToggle(account.id)} disabled={Boolean(account.currentJobId)} title={account.currentJobId ? "当前账号正在执行任务，请任务结束后再停用" : undefined} aria-label={account.enabled ? "停用账号" : "启用账号"}><span /></button><button className="icon-button danger" onClick={() => onRemove(account.id)} title="删除账号"><Trash2 size={16} /></button></div>
         </div>)}
       </div>
     </div>
@@ -667,7 +708,7 @@ function WorkflowEditorModal({ workflow, onClose, onSave }: { workflow: Workflow
     await onSave({ ...draft, runningHubWorkflowId: id, parameters, parameterCount: parameters.length, needsReview: parameters.some(parameter => parameter.visible !== false && (parameter.semanticType === "unknown" || parameter.confidence < .7)), profileVersion: draft.profileVersion + 1, updatedAt: Date.now() });
   }
 
-  return <div className="modal-backdrop" role="presentation"><div className="modal profile-editor-modal" role="dialog" aria-modal="true" aria-label="编辑工作流 Profile"><div className="modal-head"><div><p>PROFILE EDITOR</p><h2>编辑参数映射</h2></div><button className="icon-button" onClick={onClose} aria-label="关闭"><X size={18} /></button></div><div className="editor-summary"><label>工作流名称<input value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} /></label><label>Workflow ID<input value={draft.runningHubWorkflowId} onChange={event => setDraft(current => ({ ...current, runningHubWorkflowId: event.target.value }))} /></label><label className="wide-field">RunningHub 地址（可选）<input value={draft.sourceUrl ?? ""} onChange={event => setDraft(current => ({ ...current, sourceUrl: event.target.value || undefined }))} placeholder="https://www.runninghub.ai/..." /></label></div><div className="editor-toolbar"><div className="segmented">{(["all", "media", "review"] as const).map(value => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{value === "all" ? `全部 ${draft.parameters.length}` : value === "media" ? `媒体 ${draft.parameters.filter(isMediaParameter).length}` : `待确认 ${draft.parameters.filter(item => item.semanticType === "unknown" || item.confidence < .7).length}`}</button>)}</div><button className="secondary small" onClick={addMedia}><Plus size={15} />添加媒体节点</button></div><div className="parameter-editor-list">{shown.map(({ parameter, index }) => <div className={`parameter-editor-row ${isMediaParameter(parameter) ? "media" : ""}`} key={parameter.id}><div className="parameter-editor-title"><span className="parameter-kind">{isMediaParameter(parameter) ? <ImagePlus size={16} /> : <Settings2 size={16} />}</span><label>显示名称<input value={parameter.nodeTitle ?? ""} onChange={event => updateParameter(index, { nodeTitle: event.target.value })} /></label><button className="icon-button danger" onClick={() => setDraft(current => ({ ...current, parameters: current.parameters.filter((_, itemIndex) => itemIndex !== index) }))} title="移除参数"><Trash2 size={15} /></button></div><div className="parameter-editor-grid"><label>nodeId<input value={parameter.nodeId} onChange={event => updateParameter(index, { nodeId: event.target.value, key: `${event.target.value}.${parameter.fieldName}` })} /></label><label>fieldName<input value={parameter.fieldName} onChange={event => updateParameter(index, { fieldName: event.target.value, key: `${parameter.nodeId}.${event.target.value}` })} /></label><label>参数语义<select value={parameter.semanticType} onChange={event => { const semanticType = event.target.value as WorkflowSemanticType; const mediaType = ["image", "video", "audio"].includes(semanticType) ? semanticType as "image" | "video" | "audio" : undefined; updateParameter(index, { semanticType, valueType: mediaType ?? parameter.valueType, confidence: 1 }); }}>{semanticOptions.map(value => <option key={value} value={value}>{semanticLabels[value] ?? "其他 / 未识别"}</option>)}</select><ChevronDown size={15} /></label><label>控件类型<select value={parameter.valueType} onChange={event => updateParameter(index, { valueType: event.target.value as WorkflowParameterView["valueType"] })}>{["string", "integer", "number", "boolean", "select", "image", "video", "audio"].map(value => <option key={value}>{value}</option>)}</select><ChevronDown size={15} /></label></div>{isMediaParameter(parameter) && <div className="media-control-editor"><label>关联启用开关<select value={parameter.mediaControl?.parameterId ?? ""} onChange={event => updateParameter(index, { mediaControl: event.target.value ? { parameterId: event.target.value, activeValue: true, inactiveValue: false, autoEnableOnReplace: true, detected: false } : undefined })}><option value="">无关联开关</option>{booleanParameters.map(control => <option key={control.id} value={control.id}>{control.nodeTitle ?? control.fieldName} · {control.key}</option>)}</select><ChevronDown size={15} /></label>{parameter.mediaControl && <><label className="inline-check"><input type="checkbox" checked={parameter.mediaControl.autoEnableOnReplace} onChange={event => updateParameter(index, { mediaControl: { ...parameter.mediaControl!, autoEnableOnReplace: event.target.checked } })} />上传替换时自动开启</label><button type="button" className="secondary small" onClick={() => updateParameter(index, { mediaControl: { ...parameter.mediaControl!, activeValue: !parameter.mediaControl!.activeValue, inactiveValue: parameter.mediaControl!.activeValue } })}>开启值：{String(parameter.mediaControl.activeValue)}</button></>}</div>}<div className="parameter-editor-meta"><code>{parameter.key || "尚未完成映射"}</code><span>{parameter.classType}</span><span className={parameter.confidence < .7 ? "low" : ""}>置信度 {Math.round(parameter.confidence * 100)}%</span>{parameter.mediaControl && <span className="linked-control">已关联开关</span>}</div></div>)}</div>{!shown.length && <div className="empty-parameters">当前筛选条件下没有参数。</div>}{error && <div className="import-feedback error modal-feedback"><AlertTriangle size={17} /><span>{error}</span></div>}<div className="modal-actions editor-actions"><span>保存后 Profile 版本将升级至 v{draft.profileVersion + 1}</span><button className="secondary" onClick={onClose}>取消</button><button className="primary" onClick={() => void save()}>保存 Profile</button></div></div></div>;
+  return <div className="modal-backdrop" role="presentation"><div className="modal profile-editor-modal" role="dialog" aria-modal="true" aria-label="编辑工作流 Profile"><div className="modal-head"><div><p>PROFILE EDITOR</p><h2>编辑参数映射</h2></div><button className="icon-button" onClick={onClose} aria-label="关闭"><X size={18} /></button></div><div className="editor-summary"><label>工作流名称<input value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} /></label><label>Workflow ID<input value={draft.runningHubWorkflowId} readOnly title="更换 Workflow ID 需要重新导入对应 API JSON" /></label><label className="wide-field">RunningHub 地址（可选）<input value={draft.sourceUrl ?? ""} onChange={event => setDraft(current => ({ ...current, sourceUrl: event.target.value || undefined }))} placeholder="https://www.runninghub.ai/..." /></label></div><div className="editor-toolbar"><div className="segmented">{(["all", "media", "review"] as const).map(value => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{value === "all" ? `全部 ${draft.parameters.length}` : value === "media" ? `媒体 ${draft.parameters.filter(isMediaParameter).length}` : `待确认 ${draft.parameters.filter(item => item.semanticType === "unknown" || item.confidence < .7).length}`}</button>)}</div><button className="secondary small" onClick={addMedia}><Plus size={15} />添加媒体节点</button></div><div className="parameter-editor-list">{shown.map(({ parameter, index }) => <div className={`parameter-editor-row ${isMediaParameter(parameter) ? "media" : ""}`} key={parameter.id}><div className="parameter-editor-title"><span className="parameter-kind">{isMediaParameter(parameter) ? <ImagePlus size={16} /> : <Settings2 size={16} />}</span><label>显示名称<input value={parameter.nodeTitle ?? ""} onChange={event => updateParameter(index, { nodeTitle: event.target.value })} /></label><button className="icon-button danger" onClick={() => setDraft(current => ({ ...current, parameters: current.parameters.filter((_, itemIndex) => itemIndex !== index) }))} title="移除参数"><Trash2 size={15} /></button></div><div className="parameter-editor-grid"><label>nodeId<input value={parameter.nodeId} onChange={event => updateParameter(index, { nodeId: event.target.value, key: `${event.target.value}.${parameter.fieldName}` })} /></label><label>fieldName<input value={parameter.fieldName} onChange={event => updateParameter(index, { fieldName: event.target.value, key: `${parameter.nodeId}.${event.target.value}` })} /></label><label>参数语义<select value={parameter.semanticType} onChange={event => { const semanticType = event.target.value as WorkflowSemanticType; const mediaType = ["image", "video", "audio"].includes(semanticType) ? semanticType as "image" | "video" | "audio" : undefined; updateParameter(index, { semanticType, valueType: mediaType ?? parameter.valueType, confidence: 1 }); }}>{semanticOptions.map(value => <option key={value} value={value}>{semanticLabels[value] ?? "其他 / 未识别"}</option>)}</select><ChevronDown size={15} /></label><label>控件类型<select value={parameter.valueType} onChange={event => updateParameter(index, { valueType: event.target.value as WorkflowParameterView["valueType"] })}>{["string", "integer", "number", "boolean", "select", "json", "image", "video", "audio"].map(value => <option key={value}>{value}</option>)}</select><ChevronDown size={15} /></label></div>{isMediaParameter(parameter) && <div className="media-control-editor"><label>关联启用开关<select value={parameter.mediaControl?.parameterId ?? ""} onChange={event => updateParameter(index, { mediaControl: event.target.value ? { parameterId: event.target.value, activeValue: true, inactiveValue: false, autoEnableOnReplace: true, detected: false } : undefined })}><option value="">无关联开关</option>{booleanParameters.map(control => <option key={control.id} value={control.id}>{control.nodeTitle ?? control.fieldName} · {control.key}</option>)}</select><ChevronDown size={15} /></label>{parameter.mediaControl && <><label className="inline-check"><input type="checkbox" checked={parameter.mediaControl.autoEnableOnReplace} onChange={event => updateParameter(index, { mediaControl: { ...parameter.mediaControl!, autoEnableOnReplace: event.target.checked } })} />上传替换时自动开启</label><button type="button" className="secondary small" onClick={() => updateParameter(index, { mediaControl: { ...parameter.mediaControl!, activeValue: !parameter.mediaControl!.activeValue, inactiveValue: parameter.mediaControl!.activeValue } })}>开启值：{String(parameter.mediaControl.activeValue)}</button></>}</div>}<div className="parameter-editor-meta"><code>{parameter.key || "尚未完成映射"}</code><span>{parameter.classType}</span><span className={parameter.confidence < .7 ? "low" : ""}>置信度 {Math.round(parameter.confidence * 100)}%</span>{parameter.mediaControl && <span className="linked-control">已关联开关</span>}</div></div>)}</div>{!shown.length && <div className="empty-parameters">当前筛选条件下没有参数。</div>}{error && <div className="import-feedback error modal-feedback"><AlertTriangle size={17} /><span>{error}</span></div>}<div className="modal-actions editor-actions"><span>保存后 Profile 版本将升级至 v{draft.profileVersion + 1}</span><button className="secondary" onClick={onClose}>取消</button><button className="primary" onClick={() => void save()}>保存 Profile</button></div></div></div>;
 }
 
 const semanticLabels: Partial<Record<WorkflowSemanticType, string>> = {
@@ -681,6 +722,7 @@ export function discoverParameters(raw: Record<string, unknown>): WorkflowParame
   const found: WorkflowParameterView[] = [];
   const semanticCounts = new Map<string, number>();
   const optionalReferenceMedia = detectOptionalReferenceMedia(raw);
+  const nodeIds = new Set(Object.keys(raw));
   for (const [nodeId, candidate] of Object.entries(raw)) {
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
     const node = candidate as Record<string, unknown>;
@@ -690,18 +732,19 @@ export function discoverParameters(raw: Record<string, unknown>): WorkflowParame
     const classType = typeof node.class_type === "string" ? node.class_type : "UnknownNode";
     const nodeTitle = typeof meta.title === "string" ? meta.title : classType;
     for (const [fieldName, defaultValue] of Object.entries(inputs as Record<string, unknown>)) {
-      if (Array.isArray(defaultValue) && defaultValue.length === 2) continue;
+      if (Array.isArray(defaultValue) && defaultValue.length === 2 && nodeIds.has(String(defaultValue[0])) && Number.isInteger(defaultValue[1])) continue;
       const primitive = typeof defaultValue;
-      if (!["string", "number", "boolean"].includes(primitive)) continue;
+      if (!["string", "number", "boolean", "object"].includes(primitive) || defaultValue === null) continue;
       const inferredMedia = inferMediaType(fieldName, classType, nodeTitle);
       const inferred = inferredMedia ?? inferParameterType(fieldName, classType, nodeTitle, defaultValue);
-      const valueType = inferredMedia ?? (primitive === "boolean" ? "boolean" : primitive === "number" ? (Number.isInteger(defaultValue) ? "integer" : "number") : "string");
+      const valueType = inferredMedia ?? (primitive === "boolean" ? "boolean" : primitive === "number" ? (Number.isInteger(defaultValue) ? "integer" : "number") : primitive === "object" ? "json" : "string");
       const semanticType = inferred ?? "unknown";
       const idBase = inferred ?? `${nodeId}_${fieldName}`;
       const occurrence = (semanticCounts.get(idBase) ?? 0) + 1;
       semanticCounts.set(idBase, occurrence);
       const parameter: WorkflowParameterView = { id: occurrence === 1 ? idBase : `${idBase}_${occurrence}`, key: `${nodeId}.${fieldName}`, nodeId, fieldName, classType, nodeTitle, valueType, semanticType, defaultValue, confidence: inferred ? .9 : 0, showEnableToggle: optionalReferenceMedia.has(nodeId) && /^(image|audio|video)$/i.test(fieldName) };
-      found.push({ ...parameter, visible: shouldExposeParameter(parameter) });
+      const complete = withBuiltinSchema(parameter);
+      found.push({ ...complete, visible: shouldExposeParameter(complete) });
     }
   }
   return attachMediaControls(found);
@@ -844,7 +887,7 @@ function optionParts(option: unknown) {
   return { label: String(option ?? ""), value: option };
 }
 
-function CreateJob({ workflows, initialWorkflowId, initialDraft, onCreate }: { workflows: WorkflowView[]; initialWorkflowId?: string; initialDraft?: CreateJobDraft; onCreate: (drafts: CreateJobDraft[]) => Promise<boolean> }) {
+const CreateJob = memo(function CreateJob({ workflows, initialWorkflowId, initialDraft, onCreate }: { workflows: WorkflowView[]; initialWorkflowId?: string; initialDraft?: CreateJobDraft; onCreate: (drafts: CreateJobDraft[]) => Promise<boolean> }) {
   const initialWorkflow = workflows.find(workflow => workflow.id === initialWorkflowId) ?? workflows[0];
   const [draft, setDraft] = useState<CreateJobDraft>(() => initialDraft ? cloneDraft(initialDraft) : createDraft(initialWorkflow));
   const [showGeneric, setShowGeneric] = useState(false);
@@ -866,7 +909,7 @@ function CreateJob({ workflows, initialWorkflowId, initialDraft, onCreate }: { w
     .sort((left, right) => Number(left.semanticType === "negative_prompt") - Number(right.semanticType === "negative_prompt"));
   const generationParameters = recognized
     .filter(parameter => !isMediaParameter(parameter) && !["prompt", "negative_prompt"].includes(parameter.semanticType))
-    .sort((left, right) => (left.displayOrder ?? 999) - (right.displayOrder ?? 999));
+    .sort((left, right) => generationParameterOrder(left) - generationParameterOrder(right));
   const mediaOrder: Record<string, number> = { image: 0, audio: 1, video: 2 };
   const media = visibleParameters
     .filter(isMediaParameter)
@@ -993,7 +1036,7 @@ function CreateJob({ workflows, initialWorkflowId, initialDraft, onCreate }: { w
       <aside className="create-sidebar"><div className="panel batch-panel"><div className="batch-head"><div><p className="summary-kicker">制作批次</p><h2>待提交任务</h2></div><span>{batch.length}</span></div>{batch.length === 0 ? <div className="batch-empty">调整好当前任务后点击“加入制作批次”。每项都会保留自己的参数和媒体文件。</div> : <div className="batch-list">{batch.map((item, index) => { const workflow = workflows.find(entry => entry.id === item.draft.workflowId); const mediaCount = Object.values(item.draft.mediaOverrides).filter(entry => entry.mode === "replace").length; return <article className={editingBatchId === item.id ? "editing" : ""} key={item.id}><DraftThumbnail draft={item.draft} /><div><strong>{workflow?.name ?? "未知工作流"}</strong><small>任务 {String(index + 1).padStart(2, "0")} · {mediaCount} 个媒体文件</small></div><div className="batch-actions"><button type="button" onClick={() => editBatchItem(item.id)} aria-label="编辑批次任务"><Pencil size={14} /></button><button type="button" onClick={() => { setBatch(current => current.filter(entry => entry.id !== item.id)); if (editingBatchId === item.id) setEditingBatchId(undefined); }} aria-label="删除批次任务"><Trash2 size={14} /></button></div></article>; })}</div>}<button className="primary batch-submit" type="button" disabled={!batch.length || submitting} onClick={() => void submitDrafts(batch.map(item => item.draft))}>{submitting ? "正在批量创建…" : `批量提交 ${batch.length} 个任务`}<ArrowRight size={16} /></button></div></aside>
     </div>
   </>;
-}
+});
 
 function DraftThumbnail({ draft }: { draft: CreateJobDraft }) {
   const replacements = Object.values(draft.mediaOverrides).filter(item => item.mode === "replace");
@@ -1018,14 +1061,36 @@ function ParameterField({ parameter, value, onChange }: { parameter: WorkflowPar
   const label = parameterLabel(parameter);
   const meta = `节点 ${parameter.key} · ${parameter.classType}`;
   if (parameter.valueType === "boolean") return <label className="boolean-field"><span><strong>{label}</strong><small>{meta}</small></span><button type="button" className={`switch ${value ? "checked" : ""}`} onClick={() => onChange(!value)} aria-pressed={Boolean(value)}><span /></button></label>;
-  if (parameter.valueType === "select" || parameter.options?.length) {
+  if (parameter.valueType === "select" && parameter.options?.length) {
     const options = parameter.options ?? [];
     const selectedToken = JSON.stringify(value);
     return <label className="parameter-field"><span className="field-label">{label}<small>{meta}</small></span><select value={selectedToken} onChange={event => { const match = options.map(optionParts).find(option => JSON.stringify(option.value) === event.target.value); onChange(match?.value); }}>{options.map(option => { const item = optionParts(option); return <option key={JSON.stringify(item.value)} value={JSON.stringify(item.value)}>{item.label}</option>; })}</select><ChevronDown size={16} /></label>;
   }
   if (parameter.valueType === "integer" || parameter.valueType === "number") return <label className="parameter-field"><span className="field-label">{label}<small>{meta}</small></span><input type="number" value={typeof value === "number" ? value : ""} min={parameter.min} max={parameter.max} step={parameter.step ?? (parameter.valueType === "integer" ? 1 : "any")} onChange={event => onChange(event.target.value === "" ? "" : Number(event.target.value))} /></label>;
+  if (parameter.valueType === "json") return <JsonParameterField label={label} meta={meta} value={value} onChange={onChange} />;
   const multiline = ["prompt", "negative_prompt"].includes(parameter.semanticType) || String(value ?? "").length > 80;
   return <label className={`parameter-field ${multiline ? "wide-field" : ""}`}><span className="field-label">{label}<small>{meta}</small></span>{multiline ? <textarea rows={4} value={String(value ?? "")} onChange={event => onChange(event.target.value)} /> : <input value={String(value ?? "")} onChange={event => onChange(event.target.value)} />}</label>;
+}
+
+function JsonParameterField({ label, meta, value, onChange }: { label: string; meta: string; value: unknown; onChange: (value: unknown) => void }) {
+  const serialized = JSON.stringify(value ?? null, null, 2);
+  const [text, setText] = useState(serialized);
+  const [error, setError] = useState<string>();
+  useEffect(() => { setText(serialized); setError(undefined); }, [serialized]);
+  return <label className={`parameter-field wide-field json-parameter ${error ? "invalid" : ""}`}>
+    <span className="field-label">{label}<small>{meta}</small></span>
+    <textarea rows={4} value={text} aria-invalid={Boolean(error)} onChange={event => {
+      const next = event.target.value;
+      setText(next);
+      try {
+        onChange(JSON.parse(next));
+        setError(undefined);
+      } catch (parseError) {
+        setError(parseError instanceof Error ? parseError.message : "JSON 格式无效");
+      }
+    }} />
+    {error && <small className="json-error">JSON 尚未完成：请修正格式后再提交。</small>}
+  </label>;
 }
 
 function MediaField({ parameter, draft, index, onPick, onDrop, onMove, onChange }: { parameter: WorkflowParameterView; draft: CreateJobDraft["mediaOverrides"][string]; index: number; onPick?: () => void; onDrop: (file: File) => void; onMove: (sourceId: string) => void; onChange: (mode: "replace" | "clear", file?: File) => void }) {
@@ -1080,8 +1145,8 @@ function Jobs({ jobs, onCancel, onRegenerate, onDelete, onReveal }: { jobs: JobV
 
 function JobRow({ job, compact, onCancel, onRegenerate, onDelete, onPreview, onReveal }: { job: JobView; compact?: boolean; onCancel?: (id: string) => void; onRegenerate?: () => void; onDelete?: () => void; onPreview?: () => void; onReveal?: (localPath: string) => void }) {
   const terminal = isTerminalJobStatus(job.status);
-  const showElapsed = activeJobStatuses.has(job.status) || job.status === "COMPLETED";
-  return <article className={`job-row ${compact ? "compact" : ""}`}><JobThumbnail job={job} /><div className="job-main"><div className="job-title"><strong>{job.workflowName}</strong><StatusPill status={job.status} /></div><div className="job-meta"><span>{job.remoteTaskId ? `taskId ${job.remoteTaskId}` : "等待分配远端任务"}</span>{job.accountLabel && <><i /><span>{job.accountLabel}</span></>}<i /><span>{relativeTime(job.createdAt)}</span>{showElapsed && <><i /><ElapsedTime job={job} /></>}{job.inputs?.media.length ? <><i /><span>{job.inputs.media.length} 个媒体槽</span></> : null}{job.outputs?.length ? <><i /><span>{job.outputs.length} 个输出</span></> : null}</div>{job.error && job.status !== "SUBMIT_UNKNOWN" && <p className="job-error">{job.status === "FAILED" ? localizedFailureReason(job.error, job.status) : job.error}</p>}{job.status === "SUBMIT_UNKNOWN" && <p className="job-error">{localizedFailureReason(job.error, job.status)}</p>}{!compact && !terminal && <div className="progress"><span style={{ width: `${job.progress}%` }} /></div>}</div>{!compact && <div className="job-actions">{job.status === "COMPLETED" && onPreview && <button className="primary small" onClick={onPreview}><Play size={14} />任务预览</button>}{onRegenerate && job.inputs && <button className="secondary small" onClick={onRegenerate}><RefreshCw size={14} />再次生成</button>}{job.outputs?.[0]?.localPath && onReveal && <button className="secondary small" onClick={() => onReveal(job.outputs![0]!.localPath!)}><FolderOpen size={14} />显示文件</button>}{!terminal && <button className="danger-button small" onClick={() => onCancel?.(job.id)}><Square size={13} />停止生成</button>}{terminal && onDelete && <button className="icon-button danger" onClick={onDelete} title="删除任务"><Trash2 size={15} /></button>}</div>}</article>;
+  const showElapsed = Boolean(job.generationStartedAt) && (activeJobStatuses.has(job.status) || job.status === "COMPLETED");
+  return <article className={`job-row ${compact ? "compact" : ""}`}><JobThumbnail job={job} /><div className="job-main"><div className="job-title"><strong>{job.workflowName}</strong><StatusPill status={job.status} /></div><div className="job-meta"><span>{job.remoteTaskId ? `taskId ${job.remoteTaskId}` : "等待分配远端任务"}</span>{job.accountLabel && <><i /><span>{job.accountLabel}</span></>}<i /><span>{relativeTime(job.createdAt)}</span>{job.stageLabel && <><i /><span>{job.stageLabel}</span></>}{showElapsed && <><i /><ElapsedTime job={job} /></>}{job.inputs?.media.length ? <><i /><span>{job.inputs.media.length} 个媒体槽</span></> : null}{job.outputs?.length ? <><i /><span>{job.outputs.length} 个输出</span></> : null}</div>{job.error && job.status !== "SUBMIT_UNKNOWN" && <><p className="job-error">{job.status === "FAILED" ? localizedFailureReason(job.error, job.status) : job.error}</p>{job.errorDetail && <details className="job-error-detail"><summary>查看错误详情</summary><span>类型：{job.errorDetail.code}</span><span>阶段：{job.errorDetail.phase}</span>{job.errorDetail.remoteCode && <span>RunningHub：{job.errorDetail.remoteCode}</span>}{job.errorDetail.nodeId && <span>节点：{job.errorDetail.nodeId}{job.errorDetail.nodeName ? `（${job.errorDetail.nodeName}）` : ""}</span>}</details>}</>}{job.status === "SUBMIT_UNKNOWN" && <p className="job-error">{localizedFailureReason(job.error, job.status)}</p>}{!compact && !terminal && <div className="progress indeterminate"><span /></div>}</div>{!compact && <div className="job-actions">{job.status === "COMPLETED" && onPreview && <button className="primary small" onClick={onPreview}><Play size={14} />任务预览</button>}{onRegenerate && job.inputs && <button className="secondary small" onClick={onRegenerate}><RefreshCw size={14} />再次生成</button>}{job.outputs?.[0]?.localPath && onReveal && <button className="secondary small" onClick={() => onReveal(job.outputs![0]!.localPath!)}><FolderOpen size={14} />显示文件</button>}{!terminal && <button className="danger-button small" onClick={() => onCancel?.(job.id)}><Square size={13} />{["DOWNLOAD_PENDING", "DOWNLOADING"].includes(job.status) || (job.status === "RETRY_WAIT" && job.retryPhase === "download") ? "取消下载" : "停止生成"}</button>}{terminal && onDelete && <button className="icon-button danger" onClick={onDelete} title="删除任务"><Trash2 size={15} /></button>}</div>}</article>;
 }
 
 function ElapsedTime({ job }: { job: JobView }) {
@@ -1091,7 +1156,8 @@ function ElapsedTime({ job }: { job: JobView }) {
     const timer = window.setInterval(() => setClock(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, [job.status]);
-  const startedAt = job.generationStartedAt ?? job.startedAt ?? job.createdAt;
+  const startedAt = job.generationStartedAt;
+  if (!startedAt) return null;
   const endedAt = job.generationCompletedAt ?? (job.status === "COMPLETED" ? job.completedAt : undefined) ?? clock;
   const seconds = Math.max(0, Math.floor((endedAt - startedAt) / 1_000));
   const hours = Math.floor(seconds / 3_600);
@@ -1128,7 +1194,7 @@ function TaskPreviewModal({ job, onClose, onReveal }: { job: JobView; onClose: (
   const output = outputs[selected];
   const media = job.inputs?.media ?? [];
   const parameters = job.inputs?.parameters ?? [];
-  return <div className="modal-backdrop" role="presentation"><div className="modal output-preview-modal task-preview-modal" role="dialog" aria-modal="true" aria-label="任务预览"><div className="modal-head"><div><p>TASK PREVIEW</p><h2>{job.workflowName}</h2><div className="preview-task-meta"><StatusPill status={job.status} /><span>{job.remoteTaskId ? `taskId ${job.remoteTaskId}` : `本地任务 ${job.id}`}</span></div></div><button className="icon-button" onClick={onClose} aria-label="关闭"><X size={18} /></button></div><div className="preview-section-tabs"><button className={section === "inputs" ? "active" : ""} onClick={() => setSection("inputs")}>输入快照 <span>{media.length + parameters.length}</span></button><button className={section === "outputs" ? "active" : ""} onClick={() => setSection("outputs")}>生成输出 <span>{outputs.length}</span></button></div>{section === "inputs" ? <div className="task-inputs"><section><h3>媒体输入</h3>{media.length ? <div className="snapshot-media-grid">{media.map(item => <article key={item.parameterId}><div className="snapshot-media-head"><div><strong>{item.label}</strong><span>节点 {item.key}</span></div><b>{item.mode === "replace" ? "已替换" : item.mode === "clear" ? "已清空" : "工作流默认"}</b></div>{item.previewUrl ? <MediaPreview type={item.type} url={item.previewUrl} /> : <div className="snapshot-media-placeholder">{item.mode === "clear" ? "本次任务未向该节点传入媒体" : "使用工作流保存的默认媒体"}</div>}{item.fileName && <small className="snapshot-filename">{item.fileName}</small>}</article>)}</div> : <div className="empty-parameters">该任务没有媒体输入节点。</div>}</section><section><h3>提示词与参数</h3>{parameters.length ? <div className="snapshot-parameter-list">{parameters.map(item => <div className={item.semanticType === "prompt" ? "prompt" : ""} key={item.id}><span><strong>{item.label}</strong><small>节点 {item.key}</small></span><p>{formatSnapshotValue(item.value)}</p></div>)}</div> : <div className="empty-parameters">没有可显示的参数。</div>}</section></div> : <div className="task-outputs">{outputs.length ? <><div className="output-tabs">{outputs.map((item, index) => <button key={`${item.url}-${index}`} className={index === selected ? "active" : ""} onClick={() => setSelected(index)}><span>{item.stage ? `阶段 ${item.stage}` : `输出 ${index + 1}`}</span><strong>{item.label ?? item.type ?? `输出 ${index + 1}`}</strong></button>)}</div>{output && <OutputPlayer output={output} />}</> : <div className="output-waiting"><LoaderCircle size={30} /><strong>{["FAILED", "CANCELLED", "SUBMIT_UNKNOWN"].includes(job.status) ? "该任务没有可预览输出" : "输出尚未生成"}</strong><span>任务状态变化时，此窗口会自动读取最新任务记录。</span></div>}</div>}<div className="modal-actions"><button className="secondary" onClick={onClose}>关闭</button>{section === "outputs" && output?.localPath && <button className="secondary" onClick={() => onReveal(output.localPath!)}><FolderOpen size={16} />显示文件</button>}</div></div></div>;
+  return <div className="modal-backdrop" role="presentation"><div className="modal output-preview-modal task-preview-modal" role="dialog" aria-modal="true" aria-label="任务预览"><div className="modal-head"><div><p>TASK PREVIEW</p><h2>{job.workflowName}</h2><div className="preview-task-meta"><StatusPill status={job.status} /><span>{job.remoteTaskId ? `taskId ${job.remoteTaskId}` : `本地任务 ${job.id}`}</span></div></div><button className="icon-button" onClick={onClose} aria-label="关闭"><X size={18} /></button></div><div className="preview-section-tabs"><button className={section === "inputs" ? "active" : ""} onClick={() => setSection("inputs")}>输入快照 <span>{media.length + parameters.length}</span></button><button className={section === "outputs" ? "active" : ""} onClick={() => setSection("outputs")}>生成输出 <span>{outputs.length}</span></button></div>{section === "inputs" ? <div className="task-inputs"><section><h3>媒体输入</h3>{media.length ? <div className="snapshot-media-grid">{media.map(item => <article key={item.parameterId}><div className="snapshot-media-head"><div><strong>{item.label}</strong><span>节点 {item.key}</span></div><b>{item.mode === "replace" ? "已替换" : item.mode === "clear" ? "已清空" : "工作流默认"}</b></div>{item.previewUrl ? <MediaPreview type={item.type} url={item.previewUrl} /> : <div className="snapshot-media-placeholder">{item.mode === "clear" ? "本次任务未向该节点传入媒体" : "使用工作流保存的默认媒体"}</div>}{item.fileName && <small className="snapshot-filename">{item.fileName}</small>}</article>)}</div> : <div className="empty-parameters">该任务没有媒体输入节点。</div>}</section><section><h3>提示词与参数</h3>{parameters.length ? <div className="snapshot-parameter-list">{parameters.map(item => <div className={item.semanticType === "prompt" ? "prompt" : ""} key={item.id}><span><strong>{item.label}</strong><small>节点 {item.key}</small></span><p>{formatSnapshotValue(item.value)}</p></div>)}</div> : <div className="empty-parameters">没有可显示的参数。</div>}</section></div> : <div className="task-outputs">{outputs.length ? <><div className="output-tabs">{outputs.map((item, index) => <button key={`${item.url}-${index}`} className={index === selected ? "active" : ""} onClick={() => setSelected(index)}><span>{item.stage ? `阶段 ${item.stage}` : `输出 ${index + 1}`}</span><strong>{item.label ?? item.type ?? `输出 ${index + 1}`}</strong></button>)}</div>{output && <OutputPlayer output={output} />}</> : <div className="output-waiting"><LoaderCircle size={30} /><strong>{["FAILED", "CANCELLED", "SUBMIT_UNKNOWN"].includes(job.status) ? "该任务没有可预览输出" : "输出尚未生成"}</strong><span>任务状态变化时，此窗口会自动读取最新任务记录。</span></div>}{job.texts?.length ? <section className="text-outputs"><h3>文本输出</h3>{job.texts.map((text, index) => <pre key={index}>{text}</pre>)}</section> : null}{job.errorDetail ? <section className="task-error-detail"><h3>错误详情</h3><span>类型：{job.errorDetail.code}</span><span>阶段：{job.errorDetail.phase}</span>{job.errorDetail.remoteCode && <span>RunningHub：{job.errorDetail.remoteCode}</span>}{job.errorDetail.nodeId && <span>节点：{job.errorDetail.nodeId}{job.errorDetail.nodeName ? `（${job.errorDetail.nodeName}）` : ""}</span>}<p>{job.errorDetail.message}</p></section> : null}</div>}<div className="modal-actions"><button className="secondary" onClick={onClose}>关闭</button>{section === "outputs" && output?.localPath && <button className="secondary" onClick={() => onReveal(output.localPath!)}><FolderOpen size={16} />显示文件</button>}</div></div></div>;
 }
 
 function SettingsModal({ preferences, onPreferencesChange, onClose }: { preferences: UiPreferences; onPreferencesChange: (preferences: UiPreferences) => void; onClose: () => void }) {

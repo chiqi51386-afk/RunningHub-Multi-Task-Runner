@@ -1,10 +1,10 @@
-export const updateRepositoryUrl = "https://github.com/secure-artifacts/RunningHub-Multi-Task-Runner";
-export const fallbackUpdateRepositoryUrl = "https://github.com/chiqi51386-afk/RunningHub-Multi-Task-Runner";
+export const updateRepositoryUrl = "https://github.com/chiqi51386-afk/RunningHub-Multi-Task-Runner";
+export const fallbackUpdateRepositoryUrl = "https://github.com/secure-artifacts/RunningHub-Multi-Task-Runner";
 export const latestReleaseUrl = `${updateRepositoryUrl}/releases/latest`;
-export const latestReleaseApiUrl = "https://api.github.com/repos/secure-artifacts/RunningHub-Multi-Task-Runner/releases/latest";
+export const latestReleaseApiUrl = "https://api.github.com/repos/chiqi51386-afk/RunningHub-Multi-Task-Runner/releases/latest";
 export const latestReleaseApiUrls = [
   latestReleaseApiUrl,
-  "https://api.github.com/repos/chiqi51386-afk/RunningHub-Multi-Task-Runner/releases/latest",
+  "https://api.github.com/repos/secure-artifacts/RunningHub-Multi-Task-Runner/releases/latest",
 ] as const;
 export const trustedUpdateAssetPrefixes = [
   "/secure-artifacts/RunningHub-Multi-Task-Runner/releases/download/",

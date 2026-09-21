@@ -82,7 +82,7 @@ export function recognizeParameter(parameter: WorkflowParameter): Candidate {
     if (semanticType === "prompt" && /negative|负面|反向/.test(context)) {
       return { semanticType: "negative_prompt", confidence: 0.96, valueType: "string" };
     }
-    return { semanticType, confidence, valueType: semanticValueType(semanticType, parameter.valueType) };
+    return { semanticType, confidence, valueType: semanticValueType(semanticType, parameter.valueType, parameter.options) };
   }
 
   if (typeof parameter.defaultValue === "string") {
@@ -158,8 +158,10 @@ function contextSupports(type: WorkflowSemanticType, context: string): boolean {
   return tokens[type]?.test(context) ?? false;
 }
 
-function semanticValueType(type: WorkflowSemanticType, fallback: WorkflowValueType): WorkflowValueType {
+function semanticValueType(type: WorkflowSemanticType, fallback: WorkflowValueType, options?: unknown[]): WorkflowValueType {
   if (type === "image" || type === "video" || type === "audio") return type;
-  if (["sampler", "scheduler", "model", "lora", "aspect_ratio", "resolution"].includes(type)) return "select";
+  if (["sampler", "scheduler", "model", "lora", "aspect_ratio", "resolution"].includes(type)) {
+    return options?.length ? "select" : "string";
+  }
   return fallback;
 }

@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $releaseRoot = Join-Path $projectRoot "release-build"
 $unpacked = Join-Path $releaseRoot "win-unpacked"
-$version = (Get-Content -LiteralPath (Join-Path $projectRoot "package.json") -Raw | ConvertFrom-Json).version
+$version = (Get-Content -LiteralPath (Join-Path $projectRoot "package.json") -Raw -Encoding UTF8 | ConvertFrom-Json).version
 $archive = Join-Path $releaseRoot "RunningHub-Runner-v$version-windows-x64.zip"
 
 if (-not (Test-Path -LiteralPath (Join-Path $unpacked "RunningHub Runner.exe"))) {

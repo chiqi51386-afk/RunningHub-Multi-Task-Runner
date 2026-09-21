@@ -33,7 +33,7 @@ const JOB_SELECT = `
          profile_snapshot_json, parameters_json, media_json, output_dir, account_id,
          remote_task_id, status, outputs_json, raw_result_json, error_json,
          retry_phase, retry_after, created_at, assigned_at, submit_started_at,
-         remote_completed_at, completed_at, updated_at
+         generation_started_at, remote_completed_at, completed_at, updated_at
   FROM jobs`;
 
 export class CoreDatabase {
@@ -115,6 +115,7 @@ export class CoreDatabase {
         created_at INTEGER NOT NULL,
         assigned_at INTEGER,
         submit_started_at INTEGER,
+        generation_started_at INTEGER,
         remote_completed_at INTEGER,
         completed_at INTEGER,
         updated_at INTEGER NOT NULL,
@@ -148,8 +149,28 @@ export class CoreDatabase {
     if (!workflowColumns.some(column => column.name === "source_url")) {
       this.raw.exec("ALTER TABLE workflows ADD COLUMN source_url TEXT");
     }
+    const jobColumns = this.raw.prepare("PRAGMA table_info(jobs)").all() as DbRow[];
+    if (!jobColumns.some(column => column.name === "generation_started_at")) {
+      this.raw.exec("ALTER TABLE jobs ADD COLUMN generation_started_at INTEGER");
+    }
     this.repairMisclassifiedSubmitErrors();
     this.repairOrphanedAccountClaims();
+    // Run balance repair last because the preceding recovery steps may release
+    // accounts that were incorrectly left BUSY by an earlier process.
+    this.repairZeroCreditAccounts();
+  }
+
+  private repairZeroCreditAccounts(): void {
+    const now = Date.now();
+    this.raw.prepare(`
+      UPDATE accounts
+      SET state = 'NO_BALANCE', auto_disabled = 1,
+          auto_disabled_reason = 'no_balance', updated_at = ?
+      WHERE enabled = 1 AND current_job_id IS NULL
+        AND ((coins IS NOT NULL AND trim(coins) != '' AND CAST(coins AS REAL) <= 0)
+          OR ((coins IS NULL OR trim(coins) = '') AND balance IS NOT NULL
+            AND trim(balance) != '' AND CAST(balance AS REAL) <= 0))
+    `).run(now);
   }
 
   private repairMisclassifiedSubmitErrors(): void {
@@ -241,15 +262,20 @@ export class CoreDatabase {
     const clean = apiKey.trim();
     if (!clean) throw new Error("API Key 不能为空。");
     if (!this.getAccount(id)) throw new Error(`Account not found: ${id}`);
+    if (this.getAccount(id)?.currentJobId) throw new Error("当前账号正在执行任务，不能更换 API Key。");
     const encrypted = this.secretStore.encrypt(clean);
     const fingerprint = createHash("sha256").update(clean).digest("hex").slice(0, 32);
     try {
+      this.transaction(() => {
       this.raw.prepare(`
         UPDATE accounts
         SET key_fingerprint = ?, encrypted_key = ?, state = 'UNCHECKED',
-            auto_disabled = 0, auto_disabled_reason = NULL, last_error_at = NULL, updated_at = ?
+            auto_disabled = 0, auto_disabled_reason = NULL, last_error_at = NULL, last_checked_at = NULL,
+            cooldown_until = NULL, updated_at = ?
         WHERE id = ?
       `).run(fingerprint, encrypted, Date.now(), id);
+      this.raw.prepare("DELETE FROM media_upload_cache WHERE account_id = ?").run(id);
+      });
     } catch (error) {
       if (String(error).includes("UNIQUE")) throw new Error("该 API Key 已被其他账号使用。");
       throw error;
@@ -268,13 +294,15 @@ export class CoreDatabase {
   }
 
   setAccountEnabled(id: string, enabled: boolean): Account {
+    if (this.getAccount(id)?.currentJobId) throw new Error("当前账号正在执行任务，请任务结束后再改变启用状态。");
     const now = Date.now();
     this.raw.prepare(`
       UPDATE accounts
       SET enabled = ?, manual_disabled = ?,
           auto_disabled = CASE WHEN ? = 1 THEN 0 ELSE auto_disabled END,
           auto_disabled_reason = CASE WHEN ? = 1 THEN NULL ELSE auto_disabled_reason END,
-          state = CASE WHEN ? = 1 THEN 'CHECKING' ELSE 'DISABLED' END,
+          state = CASE WHEN ? = 1 THEN 'UNCHECKED' ELSE 'DISABLED' END,
+          last_checked_at = NULL,
           updated_at = ?
       WHERE id = ?
     `).run(Number(enabled), Number(!enabled), Number(enabled), Number(enabled), Number(enabled), now, id);
@@ -326,6 +354,9 @@ export class CoreDatabase {
       ${ACCOUNT_SELECT}
       WHERE enabled = 1 AND manual_disabled = 0 AND auto_disabled = 0
         AND state = 'IDLE' AND current_job_id IS NULL
+        AND ((coins IS NOT NULL AND trim(coins) != '' AND CAST(coins AS REAL) > 0)
+          OR ((coins IS NULL OR trim(coins) = '')
+            AND (balance IS NULL OR trim(balance) = '' OR CAST(balance AS REAL) > 0)))
         AND (cooldown_until IS NULL OR cooldown_until <= ?)
       ORDER BY COALESCE(last_used_at, 0) ASC, created_at ASC
     `).all(now) as DbRow[]).map(accountFromRow);
@@ -426,6 +457,7 @@ export class CoreDatabase {
     retryAfter: number | null;
     assignedAt: number | null;
     submitStartedAt: number | null;
+    generationStartedAt: number | null;
     remoteCompletedAt: number | null;
     completedAt: number | null;
   }>): Job {
@@ -435,6 +467,7 @@ export class CoreDatabase {
       rawResult: { column: "raw_result_json", encode: nullableJson }, lastError: { column: "error_json", encode: nullableJson },
       retryPhase: { column: "retry_phase" }, retryAfter: { column: "retry_after" }, assignedAt: { column: "assigned_at" },
       submitStartedAt: { column: "submit_started_at" }, remoteCompletedAt: { column: "remote_completed_at" },
+      generationStartedAt: { column: "generation_started_at" },
       completedAt: { column: "completed_at" },
     };
     const sets: string[] = [];
@@ -460,6 +493,9 @@ export class CoreDatabase {
         SELECT id FROM accounts
         WHERE id = ? AND enabled = 1 AND manual_disabled = 0 AND auto_disabled = 0
           AND state = 'IDLE' AND current_job_id IS NULL
+          AND ((coins IS NOT NULL AND trim(coins) != '' AND CAST(coins AS REAL) > 0)
+            OR ((coins IS NULL OR trim(coins) = '')
+              AND (balance IS NULL OR trim(balance) = '' OR CAST(balance AS REAL) > 0)))
           AND (cooldown_until IS NULL OR cooldown_until <= ?)
       `).get(accountId, now);
       if (!account) return undefined;
@@ -490,12 +526,13 @@ export class CoreDatabase {
     return this.getAccount(accountId);
   }
 
-  getMediaUploadCache(accountId: string, fileHash: string): MediaUploadCacheEntry | undefined {
+  getMediaUploadCache(accountId: string, fileHash: string, ttlMs = Infinity): MediaUploadCacheEntry | undefined {
     const row = this.raw.prepare(`
       SELECT id, account_id, file_hash, file_size, original_path, runninghub_value, uploaded_at, last_used_at
       FROM media_upload_cache WHERE account_id = ? AND file_hash = ?
     `).get(accountId, fileHash) as DbRow | undefined;
     if (!row) return undefined;
+    if (Date.now() - Number(row.uploaded_at) >= ttlMs) return undefined;
     this.raw.prepare("UPDATE media_upload_cache SET last_used_at = ? WHERE id = ?").run(Date.now(), row.id);
     return mediaCacheFromRow({ ...row, last_used_at: Date.now() });
   }
@@ -560,6 +597,7 @@ function jobFromRow(row: DbRow): Job {
     lastError: parseJson(row.error_json, undefined as JobError | undefined), retryPhase: optionalString(row.retry_phase) as JobPhase | undefined,
     retryAfter: optionalNumber(row.retry_after), createdAt: Number(row.created_at), assignedAt: optionalNumber(row.assigned_at),
     submitStartedAt: optionalNumber(row.submit_started_at), remoteCompletedAt: optionalNumber(row.remote_completed_at),
+    generationStartedAt: optionalNumber(row.generation_started_at),
     completedAt: optionalNumber(row.completed_at), updatedAt: Number(row.updated_at),
   };
 }

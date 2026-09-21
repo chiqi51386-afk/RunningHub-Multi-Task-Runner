@@ -38,6 +38,7 @@ export class AccountPool {
   enable(id: string): Account {
     const account = this.db.setAccountEnabled(id, true);
     this.events.emit("account.updated", account);
+    void this.refresh(id);
     return account;
   }
 
@@ -75,6 +76,7 @@ export class AccountPool {
       const status = await client.accountStatus();
       const now = Date.now();
       const balanceNumber = Number(status.balance ?? "0");
+      const coinsNumber = Number(status.coins ?? "0");
       const remoteCount = status.currentTaskCount ?? 0;
       const current = this.db.getAccount(id)!;
       let state: Account["state"];
@@ -82,13 +84,16 @@ export class AccountPool {
       let reason: string | null = null;
       if (current.currentJobId) state = "BUSY";
       else if (!status.valid) { state = "INVALID_KEY"; autoDisabled = true; reason = "invalid_key"; }
-      else if (status.balance !== undefined && Number.isFinite(balanceNumber) && balanceNumber <= 0) {
+      else if (status.coins !== undefined
+        ? Number.isFinite(coinsNumber) && coinsNumber <= 0
+        : status.balance !== undefined && Number.isFinite(balanceNumber) && balanceNumber <= 0) {
         state = "NO_BALANCE"; autoDisabled = true; reason = "no_balance";
       }
       else if (remoteCount > 0) state = "REMOTE_BUSY";
       else state = "IDLE";
       account = this.db.updateAccount(id, {
         state, autoDisabled, autoDisabledReason: reason,
+        cooldownUntil: null,
         balance: status.balance ?? null, coins: status.coins ?? null,
         remoteTaskCount: remoteCount, apiType: status.apiType ?? null, lastCheckedAt: now,
       });

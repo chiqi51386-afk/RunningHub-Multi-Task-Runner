@@ -1,6 +1,6 @@
 import type { PortableWorkflowPackage, WorkflowProfile, WorkflowRecord } from "../types.js";
 import { parseApiWorkflow } from "./parser.js";
-import { repairLowConfidenceSemantics, validateProfile } from "./profiles.js";
+import { repairLowConfidenceSemantics, validateProfile, validateProfileAgainstWorkflow } from "./profiles.js";
 
 export const PORTABLE_WORKFLOW_FORMAT = "runninghub-runner-workflow" as const;
 export const PORTABLE_WORKFLOW_SCHEMA_VERSION = 1 as const;
@@ -113,7 +113,14 @@ export function materializePortableProfile(
   now = Date.now(),
   createdAt = now,
 ): WorkflowProfile {
-  const parameters = repairLowConfidenceSemantics(structuredClone(value.profile.parameters));
+  const detected = new Map(parseApiWorkflow(value.workflow.apiJson).parameters.map(parameter => [parameter.key, parameter]));
+  const parameters = repairLowConfidenceSemantics(structuredClone(value.profile.parameters)).map(parameter => {
+    const schema = detected.get(parameter.key);
+    return schema?.classType === "ResolutionSelector" && schema.fieldName === "aspect_ratio"
+      ? { ...parameter, semanticType: schema.semanticType, valueType: schema.valueType, defaultValue: schema.defaultValue,
+          submitDefault: schema.submitDefault, options: schema.options, confidence: 1 }
+      : parameter;
+  });
   const profile: WorkflowProfile = {
     workflowId,
     version,
@@ -130,19 +137,6 @@ export function materializePortableProfile(
   validateProfile(profile);
   validateProfileAgainstWorkflow(profile, value.workflow.apiJson);
   return profile;
-}
-
-function validateProfileAgainstWorkflow(profile: WorkflowProfile, raw: Record<string, unknown>): void {
-  for (const parameter of profile.parameters) {
-    const node = raw[parameter.nodeId];
-    const inputs = isObject(node) && isObject(node.inputs) ? node.inputs : undefined;
-    if (!inputs || !(parameter.fieldName in inputs)) {
-      throw new Error(`工作流配置包包含失效参数映射：${parameter.nodeId}.${parameter.fieldName}`);
-    }
-  }
-  for (const output of profile.outputs) {
-    if (!isObject(raw[output.nodeId])) throw new Error(`工作流配置包包含失效输出节点：${output.nodeId}`);
-  }
 }
 
 function positiveInteger(value: unknown, fallback: number): number {

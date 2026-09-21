@@ -105,3 +105,19 @@ export function validateProfile(profile: WorkflowProfile): void {
     }
   }
 }
+
+export function validateProfileAgainstWorkflow(profile: WorkflowProfile, raw: Record<string, unknown>): void {
+  for (const parameter of profile.parameters) {
+    const node = raw[parameter.nodeId];
+    const inputs = node && typeof node === "object" && !Array.isArray(node)
+      ? (node as Record<string, unknown>).inputs
+      : undefined;
+    if (!inputs || typeof inputs !== "object" || Array.isArray(inputs) || !(parameter.fieldName in inputs)) {
+      throw new Error(`工作流包含失效参数映射：${parameter.nodeId}.${parameter.fieldName}`);
+    }
+  }
+  for (const output of profile.outputs) {
+    const node = raw[output.nodeId];
+    if (!node || typeof node !== "object" || Array.isArray(node)) throw new Error(`工作流包含失效输出节点：${output.nodeId}`);
+  }
+}

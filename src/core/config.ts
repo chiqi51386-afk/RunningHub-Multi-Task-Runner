@@ -13,6 +13,9 @@ export const DEFAULT_RUNNINGHUB_CONFIG: RunningHubConfig = {
   accountFreshnessMs: 5 * 60_000,
   maxDownloads: 3,
   outputDir: path.resolve("downloads"),
+  mediaCacheTtlMs: 24 * 60 * 60_000,
+  retryDelayMs: 10_000,
+  accountCooldownMs: 30_000,
 };
 
 export function resolveConfig(overrides: Partial<RunningHubConfig> = {}): RunningHubConfig {

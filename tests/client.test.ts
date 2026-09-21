@@ -105,3 +105,61 @@ test("remote FAILED is terminal immediately and preserves the failing node reaso
   );
   assert.equal(queryCalls, 1);
 });
+
+test("HTTP 200 task-not-found response is terminal instead of polling forever", async () => {
+  let queryCalls = 0;
+  const mockFetch: typeof fetch = async () => {
+    queryCalls += 1;
+    return Response.json({
+      taskId: "expired-task",
+      status: "",
+      errorCode: "1004",
+      errorMessage: "Task not found, please check the task ID",
+      results: null,
+    });
+  };
+  const client = new RunningHubClient("secret-key", resolveConfig({
+    pollIntervalMs: 1, pollJitterMs: 0, maxQueryFailures: 5,
+  }), mockFetch);
+  await assert.rejects(
+    client.pollTask("expired-task", { intervalMs: 1, maxPollingMs: 100 }),
+    (error: unknown) => {
+      const detail = (error as { detail?: { code?: string; retryable?: boolean; message?: string } }).detail;
+      assert.equal(detail?.code, "TASK_FAILED");
+      assert.equal(detail?.retryable, false);
+      assert.equal(detail?.message, "远端任务不存在或已过期，无法继续查询。");
+      return true;
+    },
+  );
+  assert.equal(queryCalls, 1);
+});
+
+test("empty HTTP server error is localized and remains retryable", async () => {
+  const mockFetch: typeof fetch = async () => Response.json({}, { status: 503 });
+  const client = new RunningHubClient("secret-key", resolveConfig({ requestTimeoutMs: 1_000 }), mockFetch);
+  await assert.rejects(
+    client.queryTask("live-task"),
+    (error: unknown) => {
+      const detail = (error as { detail?: { code?: string; retryable?: boolean; message?: string } }).detail;
+      assert.equal(detail?.code, "SERVER_ERROR");
+      assert.equal(detail?.retryable, true);
+      assert.equal(detail?.message, "RunningHub 状态查询服务暂时不可用（HTTP 503），软件将使用原 taskId 自动重试。");
+      return true;
+    },
+  );
+});
+
+test("query recovers from temporary empty server responses without resubmitting", async () => {
+  let calls = 0;
+  const mockFetch: typeof fetch = async () => {
+    calls += 1;
+    if (calls < 3) return Response.json({}, { status: 502 });
+    return Response.json({ status: "SUCCESS", results: [{ text: "recovered" }] });
+  };
+  const client = new RunningHubClient("secret-key", resolveConfig({
+    pollIntervalMs: 1, pollJitterMs: 0, requestTimeoutMs: 1_000,
+  }), mockFetch);
+  const result = await client.pollTask("live-task", { intervalMs: 1, maxPollingMs: 100 });
+  assert.deepEqual(result.texts, ["recovered"]);
+  assert.equal(calls, 3);
+});

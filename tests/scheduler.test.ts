@@ -216,13 +216,15 @@ test("graceful stop preserves a running task for recovery", async () => {
 
 test("user cancellation stops the remote RunningHub task before releasing the account", async () => {
   let cancelBody: Record<string, unknown> | undefined;
+  let cancelAccepted = false;
   const mockFetch: typeof fetch = async (input, init = {}) => {
     const url = String(input);
     if (url.endsWith("/accountStatus")) return Response.json({ code: 0, data: { remainMoney: "100", currentTaskCounts: 0 } });
     if (url.includes("/run/workflow/")) return Response.json({ code: 0, data: { taskId: "task-to-cancel" } });
-    if (url.endsWith("/query")) return Response.json({ status: "RUNNING" });
+    if (url.endsWith("/query")) return Response.json({ status: cancelAccepted ? "CANCEL" : "RUNNING" });
     if (url.endsWith("/task/openapi/cancel")) {
       cancelBody = JSON.parse(String(init.body));
+      cancelAccepted = true;
       return Response.json({ code: 0, msg: "success", data: null });
     }
     throw new Error(`Unexpected URL ${url}`);
@@ -245,6 +247,89 @@ test("user cancellation stops the remote RunningHub task before releasing the ac
     assert.deepEqual(cancelBody, { apiKey: "key-a", taskId: "task-to-cancel" });
     assert.equal(backend.accounts.get(account.id)?.state, "IDLE");
     assert.equal(backend.accounts.get(account.id)?.currentJobId, undefined);
+  } finally { await backend.close(); }
+});
+
+test("late cancel response cannot overwrite a successful remote result", async () => {
+  let queryCalls = 0;
+  let releaseCancel: (() => void) | undefined;
+  const cancelGate = new Promise<void>(resolve => { releaseCancel = resolve; });
+  const mockFetch: typeof fetch = async input => {
+    const url = String(input);
+    if (url.endsWith("/accountStatus")) return Response.json({ code: 0, data: { remainMoney: "100", currentTaskCounts: 0 } });
+    if (url.includes("/run/workflow/")) return Response.json({ code: 0, data: { taskId: "task-race" } });
+    if (url.endsWith("/query")) {
+      queryCalls += 1;
+      return Response.json(queryCalls === 1
+        ? { status: "RUNNING" }
+        : { status: "SUCCESS", results: [{ url: "https://files/task-race.mp4", outputType: "mp4", nodeId: "214" }] });
+    }
+    if (url.endsWith("/task/openapi/cancel")) {
+      await cancelGate;
+      return Response.json({ code: 0, msg: "success", data: null });
+    }
+    if (url === "https://files/task-race.mp4") return new Response("video");
+    throw new Error(`Unexpected URL ${url}`);
+  };
+  const backend = new RunningHubBackend({
+    databasePath: ":memory:", fetch: mockFetch, logger: new NullLogger(),
+    config: { pollIntervalMs: 5, pollJitterMs: 0, maxPollingMs: 10_000 },
+  });
+  try {
+    backend.accounts.add("A", "key-a");
+    const wf = backend.workflows.importApiJson({
+      name: "Mock", runningHubWorkflowId: "123456789012",
+      workflow: { "1": { class_type: "Text", inputs: { text: "default" }, _meta: { title: "Prompt" } } },
+    });
+    const job = backend.jobs.create({ workflowId: wf.id, parameters: { prompt: "changed" } });
+    await backend.start();
+    await waitFor(() => backend.jobs.get(job.id)?.status === "RUNNING");
+    const cancelling = backend.scheduler.cancel(job.id);
+    await waitFor(() => queryCalls >= 2);
+    releaseCancel?.();
+    const reconciled = await cancelling;
+    assert.notEqual(reconciled.status, "CANCELLED");
+    await waitFor(() => backend.jobs.get(job.id)?.status === "COMPLETED");
+    assert.equal(backend.jobs.get(job.id)?.outputs?.files[0]?.nodeId, "214");
+  } finally { await backend.close(); }
+});
+
+test("manual stop during query retry recovers remote SUCCESS instead of marking the job cancelled", async () => {
+  let queryCalls = 0;
+  const mockFetch: typeof fetch = async input => {
+    const url = String(input);
+    if (url.endsWith("/accountStatus")) return Response.json({ code: 0, data: { remainMoney: "100", currentTaskCounts: 0 } });
+    if (url.includes("/run/workflow/")) return Response.json({ code: 0, data: { taskId: "task-retry-success" } });
+    if (url.endsWith("/query")) {
+      queryCalls += 1;
+      if (queryCalls <= 3) return Response.json({}, { status: 503 });
+      return Response.json({
+        status: "SUCCESS",
+        results: [{ url: "https://files/task-retry-success.mp4", outputType: "mp4", nodeId: "214" }],
+      });
+    }
+    if (url.endsWith("/task/openapi/cancel")) return Response.json({ code: 0, msg: "success", data: null });
+    if (url === "https://files/task-retry-success.mp4") return new Response("video");
+    throw new Error(`Unexpected URL ${url}`);
+  };
+  const backend = new RunningHubBackend({
+    databasePath: ":memory:", fetch: mockFetch, logger: new NullLogger(),
+    config: { pollIntervalMs: 1, pollJitterMs: 0, maxPollingMs: 10_000, maxQueryFailures: 1 },
+  });
+  try {
+    backend.accounts.add("A", "key-a");
+    const wf = backend.workflows.importApiJson({
+      name: "Mock", runningHubWorkflowId: "123456789012",
+      workflow: { "1": { class_type: "Text", inputs: { text: "default" }, _meta: { title: "Prompt" } } },
+    });
+    const job = backend.jobs.create({ workflowId: wf.id, parameters: { prompt: "changed" } });
+    await backend.start();
+    await waitFor(() => backend.jobs.get(job.id)?.status === "RETRY_WAIT");
+    assert.match(backend.jobs.get(job.id)?.lastError?.message ?? "", /自动重试/);
+    const reconciled = await backend.scheduler.cancel(job.id);
+    assert.notEqual(reconciled.status, "CANCELLED");
+    await waitFor(() => backend.jobs.get(job.id)?.status === "COMPLETED");
+    assert.equal(backend.jobs.get(job.id)?.outputs?.files[0]?.nodeId, "214");
   } finally { await backend.close(); }
 });
 
@@ -286,6 +371,38 @@ test("cancel denial reconciles an already-failed remote task and releases the ac
   } finally { await backend.close(); }
 });
 
+test("cancel treats remote 1004 as an already-stopped task instead of surfacing an IPC error", async () => {
+  const mockFetch: typeof fetch = async (input) => {
+    const url = String(input);
+    if (url.endsWith("/accountStatus")) return Response.json({ code: 0, data: { remainMoney: "100", currentTaskCounts: 0 } });
+    if (url.includes("/run/workflow/")) return Response.json({ code: 0, data: { taskId: "task-removed-after-cancel" } });
+    if (url.endsWith("/task/openapi/cancel")) {
+      return Response.json({ errorCode: "1004", errorMessage: "Task not found, please check the task ID" });
+    }
+    if (url.endsWith("/query")) return Response.json({ status: "RUNNING" });
+    throw new Error(`Unexpected URL ${url}`);
+  };
+  const backend = new RunningHubBackend({
+    databasePath: ":memory:", fetch: mockFetch, logger: new NullLogger(),
+    config: { pollIntervalMs: 10_000, pollJitterMs: 0, maxPollingMs: 20_000 },
+  });
+  try {
+    const account = backend.accounts.add("A", "key-a");
+    const wf = backend.workflows.importApiJson({
+      name: "Mock", runningHubWorkflowId: "123456789012",
+      workflow: { "1": { class_type: "Text", inputs: { text: "default" }, _meta: { title: "Prompt" } } },
+    });
+    const job = backend.jobs.create({ workflowId: wf.id, parameters: { prompt: "changed" } });
+    await backend.start();
+    await waitFor(() => backend.jobs.get(job.id)?.status === "REMOTE_QUEUED");
+    const cancelled = await backend.scheduler.cancel(job.id);
+    assert.equal(cancelled.status, "CANCELLED");
+    assert.equal(cancelled.lastError, undefined);
+    assert.equal(backend.accounts.get(account.id)?.state, "IDLE");
+    assert.equal(backend.accounts.get(account.id)?.currentJobId, undefined);
+  } finally { await backend.close(); }
+});
+
 test("REMOTE_BUSY accounts are rechecked and newly-created jobs auto-schedule", async () => {
   let statusChecks = 0;
   let submitCalls = 0;
@@ -315,5 +432,57 @@ test("REMOTE_BUSY accounts are rechecked and newly-created jobs auto-schedule", 
     await waitFor(() => backend.jobs.get(job.id)?.status === "COMPLETED");
     assert.ok(statusChecks >= 2);
     assert.equal(submitCalls, 1);
+  } finally { await backend.close(); }
+});
+
+test("zero remainCoins marks an account as insufficient even when remainMoney is positive", async () => {
+  const mockFetch: typeof fetch = async input => {
+    if (String(input).endsWith("/accountStatus")) {
+      return Response.json({ code: 0, data: { remainMoney: "100", remainCoins: "0", currentTaskCounts: 0 } });
+    }
+    throw new Error(`Unexpected URL ${String(input)}`);
+  };
+  const backend = new RunningHubBackend({ databasePath: ":memory:", fetch: mockFetch, logger: new NullLogger() });
+  try {
+    const account = backend.accounts.add("Empty", "empty-key");
+    await backend.start();
+    await waitFor(() => backend.accounts.get(account.id)?.state === "NO_BALANCE");
+    assert.equal(backend.accounts.get(account.id)?.autoDisabled, true);
+    assert.equal(backend.accounts.available().length, 0);
+  } finally { await backend.close(); }
+});
+
+test("generation duration starts only when RunningHub first reports RUNNING", async () => {
+  let queryCalls = 0;
+  const mockFetch: typeof fetch = async input => {
+    const url = String(input);
+    if (url.endsWith("/accountStatus")) return Response.json({ code: 0, data: { remainCoins: "100", currentTaskCounts: 0 } });
+    if (url.includes("/run/workflow/")) return Response.json({ code: 0, data: { taskId: "timed-task" } });
+    if (url.endsWith("/query")) {
+      queryCalls += 1;
+      return Response.json(queryCalls === 1
+        ? { status: "RUNNING" }
+        : { status: "SUCCESS", results: [{ text: "done" }] });
+    }
+    throw new Error(`Unexpected URL ${url}`);
+  };
+  const backend = new RunningHubBackend({
+    databasePath: ":memory:", fetch: mockFetch, logger: new NullLogger(),
+    config: { pollIntervalMs: 5, pollJitterMs: 0, maxPollingMs: 1_000 },
+  });
+  try {
+    backend.accounts.add("A", "key-a");
+    const wf = backend.workflows.importApiJson({
+      name: "Timed", runningHubWorkflowId: "123456789012",
+      workflow: { "1": { class_type: "Text", inputs: { text: "default" }, _meta: { title: "Prompt" } } },
+    });
+    const job = backend.jobs.create({ workflowId: wf.id, parameters: { prompt: "x" } });
+    await backend.start();
+    await waitFor(() => backend.jobs.get(job.id)?.status === "COMPLETED");
+    const completed = backend.jobs.get(job.id)!;
+    assert.ok(completed.generationStartedAt);
+    assert.ok(completed.submitStartedAt);
+    assert.ok(completed.generationStartedAt! >= completed.submitStartedAt!);
+    assert.ok(completed.remoteCompletedAt! >= completed.generationStartedAt!);
   } finally { await backend.close(); }
 });

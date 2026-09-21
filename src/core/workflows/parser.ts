@@ -8,11 +8,12 @@ export interface ParsedWorkflow {
   workflowHash: string;
 }
 
-export function isGraphConnection(value: unknown): boolean {
+export function isGraphConnection(value: unknown, nodeIds?: ReadonlySet<string>): boolean {
   return Array.isArray(value)
     && value.length === 2
     && (typeof value[0] === "string" || typeof value[0] === "number")
-    && Number.isInteger(value[1]);
+    && Number.isInteger(value[1])
+    && (!nodeIds || nodeIds.has(String(value[0])));
 }
 
 export function parseApiWorkflow(value: unknown): ParsedWorkflow {
@@ -20,6 +21,7 @@ export function parseApiWorkflow(value: unknown): ParsedWorkflow {
     throw new Error("Expected a ComfyUI/RunningHub API-format workflow object.");
   }
   const raw = value as Record<string, unknown>;
+  const nodeIds = new Set(Object.keys(raw));
   const parameters: WorkflowParameter[] = [];
   const outputs: WorkflowOutput[] = [];
   const optionalReferenceMedia = detectOptionalReferenceMedia(raw);
@@ -40,7 +42,7 @@ export function parseApiWorkflow(value: unknown): ParsedWorkflow {
     if (output) outputs.push(output);
 
     for (const [fieldName, fieldValue] of Object.entries(inputs as Record<string, unknown>)) {
-      if (isGraphConnection(fieldValue)) continue;
+      if (isGraphConnection(fieldValue, nodeIds)) continue;
       const valueType = primitiveType(fieldValue);
       if (!valueType) continue;
       parameters.push(applyKnownNodeSchema({
@@ -79,8 +81,9 @@ function normalizePrimitiveDefault(value: unknown): unknown {
  */
 function detectOptionalReferenceMedia(raw: Record<string, unknown>): Set<string> {
   const sources = new Set<string>();
+  const nodeIds = new Set(Object.keys(raw));
   const visit = (value: unknown, path: string[]): void => {
-    if (isGraphConnection(value)) {
+    if (isGraphConnection(value, nodeIds)) {
       if (/ref(?:erence)?[_-]?(?:images?|audios?|videos?)/i.test(path.join("."))) sources.add(String((value as [string | number, number])[0]));
       return;
     }
@@ -158,6 +161,7 @@ function primitiveType(value: unknown): WorkflowValueType | null {
   if (typeof value === "boolean") return "boolean";
   if (typeof value === "number") return Number.isInteger(value) ? "integer" : "number";
   if (typeof value === "string") return "string";
+  if (Array.isArray(value) || (value && typeof value === "object")) return "json";
   return null;
 }
 

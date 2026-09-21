@@ -13,6 +13,9 @@ export interface RunningHubConfig {
   accountFreshnessMs: number;
   maxDownloads: number;
   outputDir: string;
+  mediaCacheTtlMs: number;
+  retryDelayMs: number;
+  accountCooldownMs: number;
 }
 
 export interface AccountStatus {
@@ -71,7 +74,8 @@ export type WorkflowValueType =
   | "image"
   | "video"
   | "audio"
-  | "select";
+  | "select"
+  | "json";
 
 export type WorkflowSemanticType =
   | "prompt"
@@ -206,6 +210,8 @@ export interface JobMedia {
   parameterId: string;
   localPath: string;
   uploadedValue?: string;
+  uploadedAccountId?: string;
+  uploadedAt?: number;
   rawUploadResponse?: unknown;
 }
 
@@ -280,6 +286,9 @@ export interface JobError {
   httpStatus?: number;
   remoteCode?: string;
   raw?: unknown;
+  nodeId?: string;
+  nodeName?: string;
+  confirmedSubmitFailure?: boolean;
 }
 
 export interface JobResultFile {
@@ -309,6 +318,7 @@ export interface Job extends JobSnapshot {
   retryAfter?: number;
   assignedAt?: number;
   submitStartedAt?: number;
+  generationStartedAt?: number;
   remoteCompletedAt?: number;
   completedAt?: number;
   updatedAt: number;

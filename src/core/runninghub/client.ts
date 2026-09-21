@@ -13,7 +13,7 @@ import type {
   RunningHubConfig,
 } from "../types.js";
 import { classifyRunningHubError, maskSecrets, RunningHubError, terminalTaskError } from "./errors.js";
-import { asObject, extractUploadValue, normalizedJobResult, normalizeRunningHubResponse } from "./normalizer.js";
+import { asObject, classifyRemoteTaskResponse, extractUploadValue, normalizedJobResult, normalizeRunningHubResponse } from "./normalizer.js";
 
 interface RequestOptions {
   phase: "account" | "upload" | "submit" | "query" | "download" | "cancel";
@@ -34,11 +34,14 @@ function codeFrom(data: JsonObject): unknown {
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(signal.reason ?? new Error("Aborted"));
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener("abort", () => {
+    const finish = () => { signal?.removeEventListener("abort", onAbort); resolve(); };
+    const timer = setTimeout(finish, ms);
+    const onAbort = () => {
       clearTimeout(timer);
-      reject(signal.reason ?? new Error("Aborted"));
-    }, { once: true });
+      signal?.removeEventListener("abort", onAbort);
+      reject(signal?.reason ?? new Error("Aborted"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 
@@ -140,7 +143,7 @@ export class RunningHubClient {
   }
 
   async queryTask(taskId: string): Promise<JsonObject> {
-    return this.requestJson(
+    const data = await this.requestJson(
       `${this.openApiBase}/query`,
       {
         method: "POST",
@@ -149,6 +152,19 @@ export class RunningHubClient {
       },
       { phase: "query", timeoutMs: Math.min(this.config.requestTimeoutMs, 30_000), retries: 2 },
     );
+    // RunningHub reports query failures (for example an expired/missing task)
+    // as HTTP 200 responses. Treat their business errorCode as an error instead
+    // of polling an empty status forever.
+    const normalized = normalizeRunningHubResponse(data);
+    if (classifyRemoteTaskResponse(data) === "FAILED") {
+      const detail = terminalTaskError(data, "FAILED");
+      throw new RunningHubError(detail.message, detail);
+    }
+    const code = normalized.errorCode;
+    if (!normalized.status && code !== undefined && Number(code) !== 0) {
+      throw this.apiError(data, "query", undefined, "Task query failed");
+    }
+    return data;
   }
 
   async cancelTask(taskId: string): Promise<void> {
@@ -180,10 +196,11 @@ export class RunningHubClient {
         failures = 0;
         const normalized = normalizeRunningHubResponse(response);
         const status = normalized.status ?? "UNKNOWN";
+        const remoteState = classifyRemoteTaskResponse(response);
         await options.onStatus?.(status, response);
-        if (status === "SUCCESS") return parseJobResult(taskId, response);
-        if (status === "FAILED" || status === "CANCEL") {
-          const detail = terminalTaskError(response, status);
+        if (remoteState === "SUCCESS") return parseJobResult(taskId, response);
+        if (remoteState === "FAILED" || remoteState === "CANCELLED") {
+          const detail = terminalTaskError(response, remoteState === "CANCELLED" ? "CANCEL" : "FAILED");
           throw new RunningHubError(detail.message, detail);
         }
       } catch (error) {
@@ -254,6 +271,7 @@ export class RunningHubClient {
       phase,
       raw: sanitizeRaw(data),
     });
+    if (phase === "submit") detail.confirmedSubmitFailure = true;
     return new RunningHubError(detail.message, detail);
   }
 }
@@ -263,14 +281,18 @@ export async function downloadFile(
   config: RunningHubConfig,
   url: string,
   destination: string,
+  signal?: AbortSignal,
 ): Promise<string> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error("Download timeout")), config.downloadTimeoutMs);
     const temp = `${destination}.part`;
     try {
-      const response = await fetchImpl(url, { signal: controller.signal, redirect: "follow" });
+      const requestSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
+      const response = await fetchImpl(url, { signal: requestSignal, redirect: "follow" });
       if (!response.ok || !response.body) {
-        throw new Error(`HTTP ${response.status}: ${await response.text().catch(() => "")}`);
+        const message = `HTTP ${response.status}: ${await response.text().catch(() => "")}`;
+        const detail = classifyRunningHubError({ message, httpStatus: response.status, phase: "download" });
+        throw new RunningHubError(detail.message, detail);
       }
       await mkdir(path.dirname(destination), { recursive: true });
       await pipeline(Readable.fromWeb(response.body as never), createWriteStream(temp));
@@ -278,6 +300,7 @@ export async function downloadFile(
       return destination;
     } catch (error) {
       await unlink(temp).catch(() => undefined);
+      if (error instanceof RunningHubError) throw error;
       const detail = classifyRunningHubError({ message: error, phase: "download" });
       throw new RunningHubError(detail.message, detail, error);
     } finally {

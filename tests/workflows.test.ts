@@ -50,7 +50,8 @@ test("recognizer creates stable semantic ids and unknown parameters are retained
 
   const unknown = parseApiWorkflow(await fixture("workflow-unknown-nodes.json"));
   const unknownProfile = createWorkflowProfile({ workflowId: "future", name: "Future", version: 1, parameters: unknown.parameters, now: 1 });
-  assert.deepEqual(unknownProfile.genericParameters.map(item => item.fieldName).sort(), ["bar", "foo", "mode"]);
+  assert.deepEqual(unknownProfile.genericParameters.map(item => item.fieldName).sort(), ["bar", "foo", "mode", "source"]);
+  assert.equal(unknownProfile.genericParameters.find(item => item.fieldName === "source")?.valueType, "json");
   assert.equal(unknownProfile.needsReview, false);
   assert.ok(unknownProfile.genericParameters.every(item => item.visible === false));
 });

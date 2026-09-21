@@ -14,6 +14,23 @@ export interface NormalizedRunningHubTask {
   raw: unknown;
 }
 
+export type RemoteTaskState = "QUEUED" | "RUNNING" | "SUCCESS" | "FAILED" | "CANCELLED" | "RETRYABLE_QUERY_ERROR" | "UNKNOWN";
+
+export function classifyRemoteTaskResponse(raw: unknown): RemoteTaskState {
+  const normalized = normalizeRunningHubResponse(raw);
+  const status = normalized.status;
+  if (status === "SUCCESS") return "SUCCESS";
+  if (status === "FAILED") return "FAILED";
+  if (status === "CANCEL" || status === "CANCELLED") return "CANCELLED";
+  if (status === "RUNNING") return "RUNNING";
+  if (status === "CREATE" || status === "QUEUED" || status === "PENDING") return "QUEUED";
+  if (normalized.errorCode === "805" || /APIKEY_TASK_STATUS_ERROR|工作流运行失败/i.test(normalized.errorMessage ?? "")) {
+    return normalized.failedReason != null || !status ? "FAILED" : "RETRYABLE_QUERY_ERROR";
+  }
+  if (normalized.errorCode && normalized.errorCode !== "0") return "RETRYABLE_QUERY_ERROR";
+  return "UNKNOWN";
+}
+
 export function asObject(value: unknown): JsonObject {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {};
 }

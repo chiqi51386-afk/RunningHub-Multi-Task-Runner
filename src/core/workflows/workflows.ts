@@ -4,7 +4,7 @@ import type { BackendEvents } from "../events.js";
 import type { PortableWorkflowPackage, WorkflowProfile, WorkflowRecord } from "../types.js";
 import { parseApiWorkflow } from "./parser.js";
 import { createPortableWorkflowPackage, materializePortableProfile, parsePortableWorkflowPackage } from "./package.js";
-import { createWorkflowProfile, repairLowConfidenceSemantics, validateProfile } from "./profiles.js";
+import { createWorkflowProfile, repairLowConfidenceSemantics, validateProfile, validateProfileAgainstWorkflow } from "./profiles.js";
 
 export class Workflows {
   constructor(private readonly db: CoreDatabase, private readonly events: BackendEvents) {}
@@ -98,10 +98,14 @@ export class Workflows {
       version: workflow.profileVersion + 1, createdAt: workflow.profile.createdAt, updatedAt: now,
     };
     validateProfile(next);
+    validateProfileAgainstWorkflow(next, workflow.raw);
+    if (metadata?.runningHubWorkflowId?.trim() && metadata.runningHubWorkflowId.trim() !== workflow.runningHubWorkflowId) {
+      throw new Error("Workflow ID 不能在 Profile 编辑器中改绑；请重新导入目标 Workflow 的 API JSON。");
+    }
     const record = {
       ...workflow,
       name: metadata?.name?.trim() || workflow.name,
-      runningHubWorkflowId: metadata?.runningHubWorkflowId?.trim() || workflow.runningHubWorkflowId,
+      runningHubWorkflowId: workflow.runningHubWorkflowId,
       sourceUrl: metadata && Object.prototype.hasOwnProperty.call(metadata, "sourceUrl")
         ? metadata.sourceUrl?.trim() || undefined
         : workflow.sourceUrl,
@@ -113,13 +117,34 @@ export class Workflows {
   }
 
   private refreshDerivedMetadata(workflow: WorkflowRecord): WorkflowRecord {
-    const detected = new Map(parseApiWorkflow(workflow.raw).parameters.map(parameter => [parameter.key, parameter]));
+    const parsedParameters = parseApiWorkflow(workflow.raw).parameters;
+    const detected = new Map(parsedParameters.map(parameter => [parameter.key, parameter]));
     let changed = false;
     let parameters = workflow.profile.parameters.map(parameter => {
-      if (parameter.showEnableToggle !== undefined || !detected.get(parameter.key)?.showEnableToggle) return parameter;
+      const schema = detected.get(parameter.key);
+      if (schema?.classType === "ResolutionSelector" && schema.fieldName === "aspect_ratio" &&
+        (parameter.defaultValue !== schema.defaultValue || !parameter.submitDefault || parameter.valueType !== "select")) {
+        changed = true;
+        return { ...parameter, semanticType: "aspect_ratio" as const, valueType: "select" as const,
+          defaultValue: schema.defaultValue, submitDefault: true, options: schema.options, confidence: 1 };
+      }
+      if (parameter.showEnableToggle !== undefined || !schema?.showEnableToggle) return parameter;
       changed = true;
       return { ...parameter, showEnableToggle: true };
     });
+    // Older saved profiles may predate fields added to our known node schemas.
+    // In particular, early H3 profiles stored only aspect_ratio and megapixels
+    // from ResolutionSelector, so the `multiple` widget never reached the UI.
+    // Restore only missing fields from this stable built-in node; do not merge
+    // every newly detected raw input because that would unexpectedly expose
+    // internal parameters the user deliberately hid or removed.
+    const existingKeys = new Set(parameters.map(parameter => parameter.key));
+    for (const parameter of parsedParameters) {
+      if (parameter.classType !== "ResolutionSelector" || existingKeys.has(parameter.key)) continue;
+      parameters.push({ ...parameter, id: parameter.semanticType === "unknown" ? parameter.key.replace(".", "_") : parameter.semanticType });
+      existingKeys.add(parameter.key);
+      changed = true;
+    }
     const repaired = repairLowConfidenceSemantics(parameters);
     if (repaired.some((parameter, index) => parameter.semanticType !== parameters[index]?.semanticType ||
       parameter.confidence !== parameters[index]?.confidence || parameter.valueType !== parameters[index]?.valueType)) {

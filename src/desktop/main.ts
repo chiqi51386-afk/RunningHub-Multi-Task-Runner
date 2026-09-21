@@ -49,6 +49,15 @@ function sendUpdateProgress(progress: UpdateProgress): void {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("updates:progress", progress);
 }
 
+function registerRendererEvents(): void {
+  backend.events.on("account.updated", account => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("accounts:updated", accountView(account));
+  });
+  backend.events.on("job.updated", job => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("jobs:updated", jobView(job));
+  });
+}
+
 function runPowerShell(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", ...args], {
@@ -209,10 +218,11 @@ function workflowView(workflow: WorkflowRecord) {
   };
 }
 
-const progressByStatus: Record<Job["status"], number> = {
-  PENDING: 5, ASSIGNED: 10, UPLOADING: 20, SUBMITTING: 35, SUBMIT_UNKNOWN: 100,
-  REMOTE_QUEUED: 45, RUNNING: 65, REMOTE_SUCCESS: 85, DOWNLOAD_PENDING: 88,
-  DOWNLOADING: 94, COMPLETED: 100, FAILED: 100, RETRY_WAIT: 60, CANCELLED: 100,
+const stageByStatus: Record<Job["status"], string> = {
+  PENDING: "等待调度", ASSIGNED: "已分配账号", UPLOADING: "上传媒体", SUBMITTING: "提交任务",
+  SUBMIT_UNKNOWN: "提交状态未知", REMOTE_QUEUED: "远端排队", RUNNING: "生成中", REMOTE_SUCCESS: "远端已完成",
+  DOWNLOAD_PENDING: "等待下载", DOWNLOADING: "下载中", COMPLETED: "已完成", FAILED: "失败",
+  RETRY_WAIT: "等待重试", CANCELLED: "已取消",
 };
 
 function jobView(job: Job) {
@@ -235,11 +245,18 @@ function jobView(job: Job) {
   return {
     id: job.id, workflowName: job.workflowName, status: job.status, accountLabel: account?.label,
     remoteTaskId: job.remoteTaskId, createdAt: job.createdAt, startedAt: job.assignedAt, completedAt: job.completedAt,
-    generationStartedAt: job.submitStartedAt ?? job.assignedAt,
+    generationStartedAt: job.generationStartedAt,
     generationCompletedAt: job.remoteCompletedAt ?? (job.status === "COMPLETED" ? job.completedAt : undefined),
-    progress: progressByStatus[job.status],
+    stageLabel: stageByStatus[job.status],
+    retryPhase: job.retryPhase,
     outputType: job.outputs?.files[0]?.type,
     error: job.lastError?.message,
+    errorDetail: job.lastError ? {
+      code: job.lastError.code, message: job.lastError.message, phase: job.lastError.phase,
+      remoteCode: job.lastError.remoteCode, retryable: job.lastError.retryable,
+      nodeId: job.lastError.nodeId, nodeName: job.lastError.nodeName,
+    } : undefined,
+    texts: job.outputs?.texts,
     inputs: {
       workflowId: job.workflowId,
       profileVersion: job.profileVersion,
@@ -373,6 +390,7 @@ function registerHandlers(): void {
     return inputs.map(input => jobView(backend.jobs.create(input)));
   });
   ipcMain.handle("jobs:cancel", async (_event, id: string) => jobView(await backend.scheduler.cancel(id)));
+  ipcMain.handle("jobs:retry-download", async (_event, id: string) => jobView(backend.downloads.retryNow(id)));
   ipcMain.handle("jobs:remove", (_event, id: string) => backend.jobs.remove(id));
   ipcMain.handle("downloads:directory", () => backend.config.outputDir);
   ipcMain.handle("downloads:openDirectory", async () => {
@@ -434,7 +452,12 @@ async function createWindow(): Promise<BrowserWindow> {
     webPreferences: { preload, contextIsolation: true, nodeIntegration: false },
   });
   await window.loadFile(path.resolve(applicationRoot, "frontend", "dist", "index.html"));
-  if (!smokeMode) window.once("ready-to-show", () => window.show());
+  // `ready-to-show` can fire before loadFile() resolves. Registering its
+  // listener afterwards races with Chromium and leaves a healthy process with
+  // a permanently hidden window. At this point the document is loaded, so
+  // showing directly is deterministic and keeps startup independent of
+  // network-bound backend recovery.
+  if (!smokeMode) window.show();
   return window;
 }
 
@@ -455,6 +478,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
   registerHandlers();
   const window = await createWindow();
   mainWindow = window;
+  registerRendererEvents();
   // Never hold the window behind network-bound account checks or job recovery.
   // The bridge is already registered, so the UI can render while startup work proceeds.
   await backend.start();

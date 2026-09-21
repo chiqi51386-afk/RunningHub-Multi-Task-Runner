@@ -27,6 +27,25 @@ function textOf(value: unknown): string {
   try { return JSON.stringify(value); } catch { return String(value); }
 }
 
+function userFacingMessage(rawMessage: string, input: { code?: unknown; httpStatus?: number; phase: JobPhase }): string {
+  const remoteCode = input.code == null ? undefined : String(input.code);
+  if (remoteCode === "1004") return "远端任务不存在或已过期，无法继续查询。";
+  if (input.phase !== "query") return rawMessage;
+  if (input.httpStatus !== undefined && input.httpStatus >= 500) {
+    return `RunningHub 状态查询服务暂时不可用（HTTP ${input.httpStatus}），软件将使用原 taskId 自动重试。`;
+  }
+  if (/fetch failed|network|socket|econn|enotfound|connection/i.test(rawMessage)) {
+    return "网络连接暂时中断，软件将使用原 taskId 自动重试。";
+  }
+  if (/timeout|timed out|aborterror/i.test(rawMessage)) {
+    return "任务状态查询超时，软件将使用原 taskId 自动重试。";
+  }
+  if (/^(?:\{\}|\[\]|null|undefined|\[object Object\])$/i.test(rawMessage.trim())) {
+    return "任务状态查询暂时失败，软件将使用原 taskId 自动重试。";
+  }
+  return rawMessage;
+}
+
 export function classifyRunningHubError(input: {
   message?: unknown;
   code?: unknown;
@@ -34,15 +53,22 @@ export function classifyRunningHubError(input: {
   phase: JobPhase;
   raw?: unknown;
 }): JobError {
-  const message = maskSecrets(textOf(input.message ?? "RunningHub request failed")).slice(0, 1_000);
   const remoteCode = input.code == null ? undefined : String(input.code);
-  const combined = `${remoteCode ?? ""} ${input.httpStatus ?? ""} ${message}`.toLowerCase();
+  const rawMessage = maskSecrets(textOf(input.message ?? "RunningHub request failed")).slice(0, 1_000);
+  const message = userFacingMessage(rawMessage, input);
+  // Classification must inspect the original technical detail even when the
+  // persisted/displayed message is localized for the user.
+  const combined = `${remoteCode ?? ""} ${input.httpStatus ?? ""} ${rawMessage}`.toLowerCase();
   let code: JobErrorCode = "UNKNOWN";
   let retryable = false;
   let accountRelated = false;
   let safeToReassign = false;
 
-  if (remoteCode === "605" || /insufficient|balance|余额|remainmoney|credit|quota/.test(combined)) {
+  if (remoteCode === "1004" || /task not found|任务不存在|任务已过期/.test(combined)) {
+    code = "TASK_FAILED";
+  } else if (input.phase === "download" && input.httpStatus !== undefined && input.httpStatus >= 400 && input.httpStatus < 500) {
+    code = "DOWNLOAD_FAILED";
+  } else if (remoteCode === "605" || /insufficient|balance|余额|remainmoney|credit|quota/.test(combined)) {
     code = "ACCOUNT_NO_BALANCE"; accountRelated = true; safeToReassign = input.phase !== "query";
   } else if (remoteCode === "1007" || input.httpStatus === 400 || /invalid parameter|参数错误/.test(combined)) {
     code = "INVALID_PARAMETER";
@@ -52,7 +78,7 @@ export function classifyRunningHubError(input: {
     code = "ACCOUNT_INVALID_KEY"; accountRelated = true; safeToReassign = input.phase !== "query";
   } else if (input.httpStatus === 429 || /rate.?limit|too many requests/.test(combined)) {
     code = "RATE_LIMIT"; retryable = true; accountRelated = true; safeToReassign = input.phase !== "query";
-  } else if (/concurren|currenttaskcounts|busy/.test(combined)) {
+  } else if (/concurren|currenttaskcounts|busy|queue.*(?:full|capacity|limit)|capacity.*(?:full|limit)|队列.*(?:已满|上限)/.test(combined)) {
     code = "CONCURRENCY_LIMIT"; retryable = true; accountRelated = true; safeToReassign = input.phase !== "query";
   } else if (/timeout|timed out|aborterror/.test(combined)) {
     code = "TIMEOUT"; retryable = input.phase !== "submit";
@@ -120,6 +146,8 @@ export function terminalTaskError(raw: unknown, status = "FAILED"): JobError {
     safeToReassign: false,
     remoteCode: normalized.errorCode,
     raw,
+    nodeId,
+    nodeName,
   };
 }
 

@@ -31,7 +31,20 @@ contextBridge.exposeInMainWorld("runningHub", {
     create: input => ipcRenderer.invoke("jobs:create", input),
     createBatch: inputs => ipcRenderer.invoke("jobs:createBatch", inputs),
     cancel: id => ipcRenderer.invoke("jobs:cancel", id),
+    retryDownload: id => ipcRenderer.invoke("jobs:retry-download", id),
     remove: id => ipcRenderer.invoke("jobs:remove", id),
+  },
+  events: {
+    onAccountUpdated: listener => {
+      const handler = (_event, account) => listener(account);
+      ipcRenderer.on("accounts:updated", handler);
+      return () => ipcRenderer.removeListener("accounts:updated", handler);
+    },
+    onJobUpdated: listener => {
+      const handler = (_event, job) => listener(job);
+      ipcRenderer.on("jobs:updated", handler);
+      return () => ipcRenderer.removeListener("jobs:updated", handler);
+    },
   },
   downloads: {
     directory: () => ipcRenderer.invoke("downloads:directory"),

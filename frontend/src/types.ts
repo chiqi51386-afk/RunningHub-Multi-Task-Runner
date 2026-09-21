@@ -40,7 +40,7 @@ export interface WorkflowOutputView {
   stage: number;
 }
 
-export type WorkflowValueType = "string" | "integer" | "number" | "boolean" | "image" | "video" | "audio" | "select";
+export type WorkflowValueType = "string" | "integer" | "number" | "boolean" | "image" | "video" | "audio" | "select" | "json";
 
 export type WorkflowSemanticType =
   | "prompt" | "negative_prompt" | "image" | "video" | "audio" | "duration"
@@ -95,11 +95,24 @@ export interface JobView {
   completedAt?: number;
   generationStartedAt?: number;
   generationCompletedAt?: number;
-  progress: number;
   outputType?: string;
   error?: string;
+  errorDetail?: JobErrorView;
+  texts?: string[];
+  stageLabel?: string;
+  retryPhase?: string;
   outputs?: JobOutputView[];
   inputs?: JobInputSnapshotView;
+}
+
+export interface JobErrorView {
+  code: string;
+  message: string;
+  phase: string;
+  remoteCode?: string;
+  retryable: boolean;
+  nodeId?: string;
+  nodeName?: string;
 }
 
 export interface JobInputSnapshotView {
