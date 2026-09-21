@@ -2,6 +2,8 @@ name: 构建并发布 Windows 应用
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
   workflow_dispatch:
@@ -15,6 +17,10 @@ jobs:
   build-and-release:
     name: 云端构建、验证并发布
     runs-on: windows-latest
+    # GitHub currently rejects manual workflow_dispatch requests for this
+    # fork. A deliberately marked main commit provides an equivalent,
+    # auditable release trigger without building every ordinary commit.
+    if: github.event_name != 'push' || github.ref_type == 'tag' || contains(github.event.head_commit.message, '[release]')
 
     steps:
       - name: 检出源码
@@ -34,7 +40,7 @@ jobs:
         run: |
           $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
           $releaseTag = "v$version"
-          if ("${{ github.event_name }}" -eq "push" -and "${{ github.ref_name }}" -ne $releaseTag) {
+          if ("${{ github.event_name }}" -eq "push" -and "${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne $releaseTag) {
             throw "标签 ${{ github.ref_name }} 与 package.json 版本 $releaseTag 不一致。"
           }
           "RELEASE_TAG=$releaseTag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
