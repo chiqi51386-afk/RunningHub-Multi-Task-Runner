@@ -1,50 +1,65 @@
-name: Release opal-flow
- 
+name: 构建并发布 Windows 应用
+
 on:
   push:
     tags:
-      - 'v*'
- 
+      - "v*"
+
+permissions:
+  id-token: write
+  contents: write
+  attestations: write
+
 jobs:
-  build:
-    runs-on: ubuntu-latest
- 
-    permissions:
-      contents: write
-      attestations: write
-      id-token: write
- 
+  build-and-release:
+    name: 云端构建、验证并发布
+    runs-on: windows-latest
+
     steps:
-      # 1. 获取仓库代码
-      - name: Checkout
+      - name: 检出源码
         uses: actions/checkout@v4
- 
-      # 2. 准备插件文件
-      - name: Prepare Extension
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: 安装后端与桌面依赖
+        run: npm ci
+
+      - name: 安装前端依赖
+        run: npm --prefix frontend ci
+
+      - name: 类型检查与自动化测试
         run: |
-          mkdir -p release
- 
-          rsync -av ./ release/ \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='release' \
-            --exclude='*.zip'
- 
-      # 3. 打包 ZIP
-      - name: Package Extension
+          npm run typecheck
+          npm test
+          npm run frontend:typecheck
+
+      - name: 构建 Windows x64 可执行压缩包
+        run: npm run release:win
+
+      - name: 验证发布文件存在
+        shell: pwsh
         run: |
-          cd release
-          zip -r "../RunningHub-Multi-Task-Runner-${{ github.ref_name }}.zip" .
- 
-      # 4. 生成构建证明
-      - name: Generate Build Attestation
+          $artifact = "release-build/RunningHub-Runner-${{ github.ref_name }}-windows-x64.zip"
+          if (-not (Test-Path -LiteralPath $artifact)) {
+            throw "云端构建未生成预期文件：$artifact"
+          }
+          Get-Item -LiteralPath $artifact | Select-Object FullName, Length
+
+      - name: 生成构建证明
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: 'RunningHub-Multi-Task-Runner-${{ github.ref_name }}.zip'
- 
-      # 5. 创建 GitHub Release
-      - name: Create Release
+          subject-path: release-build/RunningHub-Runner-${{ github.ref_name }}-windows-x64.zip
+
+      - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: 'RunningHub-Multi-Task-Runner-${{ github.ref_name }}.zip'
+          files: release-build/RunningHub-Runner-${{ github.ref_name }}-windows-x64.zip
           generate_release_notes: true
+          name: RunningHub Runner ${{ github.ref_name }}
