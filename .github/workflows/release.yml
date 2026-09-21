@@ -1,0 +1,56 @@
+name: 构建并发布 Windows 应用
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  id-token: write
+  contents: write
+  attestations: write
+
+jobs:
+  build-and-release:
+    name: 构建、验证并发布
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: 安装后端与桌面依赖
+        run: npm ci
+
+      - name: 安装前端依赖
+        run: npm --prefix frontend ci
+
+      - name: 类型检查与自动化测试
+        run: |
+          npm run typecheck
+          npm test
+          npm run frontend:typecheck
+
+      - name: 构建 Windows x64 可执行压缩包
+        run: npm run release:win
+
+      - name: 生成构建证明
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release-build/RunningHub-Runner-${{ github.ref_name }}-windows-x64.zip
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-build/RunningHub-Runner-${{ github.ref_name }}-windows-x64.zip
+          generate_release_notes: true
+          name: RunningHub Runner ${{ github.ref_name }}
