@@ -1,0 +1,73 @@
+name: Windows v0.1.8 云端构建
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: write
+  attestations: write
+
+jobs:
+  build-and-release:
+    name: 云端构建、验证并发布
+    runs-on: windows-latest
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: 读取发布版本
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
+          "RELEASE_TAG=v$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: 安装后端与桌面依赖
+        run: npm ci
+
+      - name: 安装前端依赖
+        run: npm --prefix frontend ci
+
+      - name: 类型检查与自动化测试
+        run: |
+          npm run typecheck
+          npm test
+          npm run frontend:typecheck
+
+      - name: 构建 Windows x64 可执行压缩包
+        run: npm run release:win
+
+      - name: 验证发布文件
+        shell: pwsh
+        run: |
+          $artifact = "release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip"
+          if (-not (Test-Path -LiteralPath $artifact)) {
+            throw "云端构建未生成预期文件：$artifact"
+          }
+          Get-Item -LiteralPath $artifact | Select-Object FullName, Length
+
+      - name: 生成构建证明
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
+          generate_release_notes: true
+          name: RunningHub Runner ${{ env.RELEASE_TAG }}
