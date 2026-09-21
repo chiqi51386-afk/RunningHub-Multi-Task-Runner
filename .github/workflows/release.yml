@@ -4,6 +4,16 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "要发布的版本标签（必须与 package.json 版本一致）"
+        required: true
+        default: "v0.1.3"
+        type: string
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
 
 permissions:
   id-token: write
@@ -46,7 +56,7 @@ jobs:
       - name: 验证发布文件存在
         shell: pwsh
         run: |
-          $artifact = "release-build/RunningHub-Runner-${{ github.ref_name }}-windows-x64.zip"
+          $artifact = "release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip"
           if (-not (Test-Path -LiteralPath $artifact)) {
             throw "云端构建未生成预期文件：$artifact"
           }
@@ -55,11 +65,12 @@ jobs:
       - name: 生成构建证明
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: release-build/RunningHub-Runner-${{ github.ref_name }}-windows-x64.zip
+          subject-path: release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
 
       - name: 创建 GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release-build/RunningHub-Runner-${{ github.ref_name }}-windows-x64.zip
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
           generate_release_notes: true
-          name: RunningHub Runner ${{ github.ref_name }}
+          name: RunningHub Runner ${{ env.RELEASE_TAG }}
