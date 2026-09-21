@@ -1,9 +1,10 @@
 {
   "name": "runninghub-multi-task-runner-core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
-  "description": "Renderer-independent RunningHub multi-workflow, multi-job, multi-account backend core",
+  "description": "RunningHub 多工作流、多任务、多账号桌面客户端",
+  "main": "dist/src/desktop/main.js",
   "files": [
     "dist/",
     "frontend/dist/",
@@ -27,6 +28,7 @@
     "native:electron": "electron-rebuild -f -w better-sqlite3",
     "desktop:start": "npm run desktop:build && electron dist/src/desktop/main.js",
     "desktop:smoke": "npm run desktop:build && npm run native:electron && electron dist/src/desktop/main.js --smoke",
+    "release:win": "npm run desktop:build && electron-builder --win dir --x64 && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.ps1",
     "licenses:generate": "node scripts/generate-third-party-licenses.mjs",
     "licenses:check": "node scripts/generate-third-party-licenses.mjs --check",
     "package:verify": "node scripts/verify-package-boundaries.mjs"
@@ -42,7 +44,37 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.5.2",
     "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
+  },
+  "build": {
+    "appId": "ai.runninghub.runner",
+    "productName": "RunningHub Runner",
+    "asar": true,
+    "directories": {
+      "output": "release-build"
+    },
+    "files": [
+      "dist/src/**/*",
+      "frontend/dist/**/*",
+      "desktop/preload.cjs",
+      "bundled-workflows/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      "README.md",
+      "THIRD_PARTY_LICENSES/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
   }
 }
