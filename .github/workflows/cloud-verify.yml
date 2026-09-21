@@ -1,0 +1,32 @@
+name: Windows 云端验证
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: 类型检查与自动化测试
+    runs-on: windows-latest
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - name: 安装依赖
+        run: |
+          npm ci
+          npm --prefix frontend ci
+      - name: 执行检查
+        run: |
+          npm run typecheck
+          npm test
+          npm run frontend:typecheck
