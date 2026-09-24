@@ -89,6 +89,7 @@ export interface JobView {
   id: string;
   workflowName: string;
   status: JobStatus;
+  instanceType: "default" | "plus";
   accountLabel?: string;
   remoteTaskId?: string;
   createdAt: number;
@@ -119,6 +120,7 @@ export interface JobErrorView {
 export interface JobInputSnapshotView {
   workflowId: string;
   profileVersion: number;
+  instanceType: "default" | "plus";
   parameters: JobInputParameterView[];
   media: JobInputMediaView[];
 }
@@ -155,6 +157,7 @@ export interface JobOutputView {
 export interface CreateJobDraft {
   workflowId: string;
   profileVersion: number;
+  instanceType: "default" | "plus";
   parameterValues: Record<string, unknown>;
   mediaOverrides: Record<string, MediaParameterDraft>;
 }

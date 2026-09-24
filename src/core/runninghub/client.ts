@@ -6,6 +6,7 @@ import { pipeline } from "node:stream/promises";
 import { openApiBase } from "../config.js";
 import type {
   AccountStatus,
+  InstanceType,
   JobResult,
   JobResultFile,
   NodeInfo,
@@ -116,14 +117,16 @@ export class RunningHubClient {
   }
 
   /** Submit exactly once. Transport ambiguity must be handled as SUBMIT_UNKNOWN by the caller. */
-  async runWorkflow(workflowId: string, nodeInfoList: NodeInfo[]): Promise<string> {
+  async runWorkflow(workflowId: string, nodeInfoList: NodeInfo[], options: { instanceType?: InstanceType } = {}): Promise<string> {
     if (!workflowId.trim()) throw new Error("workflowId is required");
+    const payload: { nodeInfoList: NodeInfo[]; instanceType?: "plus" } = { nodeInfoList };
+    if (options.instanceType === "plus") payload.instanceType = "plus";
     const data = await this.requestJson(
       `${this.openApiBase}/run/workflow/${encodeURIComponent(workflowId.trim())}`,
       {
         method: "POST",
         headers: this.jsonHeaders(),
-        body: JSON.stringify({ nodeInfoList }),
+        body: JSON.stringify(payload),
       },
       { phase: "submit", timeoutMs: this.config.requestTimeoutMs, retries: 0 },
     );

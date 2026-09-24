@@ -30,7 +30,7 @@ const ACCOUNT_SELECT = `
 
 const JOB_SELECT = `
   SELECT id, workflow_id, runninghub_workflow_id, workflow_name, profile_version,
-         profile_snapshot_json, parameters_json, media_json, output_dir, account_id,
+         profile_snapshot_json, parameters_json, media_json, instance_type, output_dir, account_id,
          remote_task_id, status, outputs_json, raw_result_json, error_json,
          retry_phase, retry_after, created_at, assigned_at, submit_started_at,
          generation_started_at, remote_completed_at, completed_at, updated_at
@@ -103,6 +103,7 @@ export class CoreDatabase {
         profile_snapshot_json TEXT NOT NULL,
         parameters_json TEXT NOT NULL,
         media_json TEXT NOT NULL,
+        instance_type TEXT NOT NULL DEFAULT 'default',
         output_dir TEXT,
         account_id TEXT,
         remote_task_id TEXT,
@@ -152,6 +153,9 @@ export class CoreDatabase {
     const jobColumns = this.raw.prepare("PRAGMA table_info(jobs)").all() as DbRow[];
     if (!jobColumns.some(column => column.name === "generation_started_at")) {
       this.raw.exec("ALTER TABLE jobs ADD COLUMN generation_started_at INTEGER");
+    }
+    if (!jobColumns.some(column => column.name === "instance_type")) {
+      this.raw.exec("ALTER TABLE jobs ADD COLUMN instance_type TEXT NOT NULL DEFAULT 'default'");
     }
     this.repairMisclassifiedSubmitErrors();
     this.repairOrphanedAccountClaims();
@@ -415,13 +419,13 @@ export class CoreDatabase {
     this.raw.prepare(`
       INSERT INTO jobs (
         id, workflow_id, runninghub_workflow_id, workflow_name, profile_version,
-        profile_snapshot_json, parameters_json, media_json, output_dir, status,
+        profile_snapshot_json, parameters_json, media_json, instance_type, output_dir, status,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
     `).run(
       id, workflow.id, workflow.runningHubWorkflowId, workflow.name, workflow.profileVersion,
       json(profileSnapshot), json(structuredClone(input.parameters)), json(structuredClone(input.media ?? [])),
-      input.outputDir ?? null, now, now,
+      input.instanceType === "plus" ? "plus" : "default", input.outputDir ?? null, now, now,
     );
     return this.getJob(id)!;
   }
@@ -455,6 +459,7 @@ export class CoreDatabase {
     lastError: JobError | null;
     retryPhase: JobPhase | null;
     retryAfter: number | null;
+    outputDir: string | null;
     assignedAt: number | null;
     submitStartedAt: number | null;
     generationStartedAt: number | null;
@@ -466,6 +471,7 @@ export class CoreDatabase {
       media: { column: "media_json", encode: json }, outputs: { column: "outputs_json", encode: nullableJson },
       rawResult: { column: "raw_result_json", encode: nullableJson }, lastError: { column: "error_json", encode: nullableJson },
       retryPhase: { column: "retry_phase" }, retryAfter: { column: "retry_after" }, assignedAt: { column: "assigned_at" },
+      outputDir: { column: "output_dir" },
       submitStartedAt: { column: "submit_started_at" }, remoteCompletedAt: { column: "remote_completed_at" },
       generationStartedAt: { column: "generation_started_at" },
       completedAt: { column: "completed_at" },
@@ -519,6 +525,7 @@ export class CoreDatabase {
     const now = Date.now();
     this.raw.prepare(`
       UPDATE accounts SET state = ?, current_job_id = NULL,
+        remote_task_count = NULL, last_checked_at = NULL,
         last_success_at = CASE WHEN ? = 1 THEN ? ELSE last_success_at END,
         last_error_at = CASE WHEN ? = 0 THEN ? ELSE last_error_at END,
         updated_at = ? WHERE id = ? AND current_job_id = ?
@@ -591,6 +598,7 @@ function jobFromRow(row: DbRow): Job {
     workflowName: String(row.workflow_name ?? ""), profileVersion: Number(row.profile_version),
     profileSnapshot: parseJson(String(row.profile_snapshot_json), {} as WorkflowProfile),
     parameters: parseJson(String(row.parameters_json), {}), media: parseJson(String(row.media_json), []),
+    instanceType: row.instance_type === "plus" ? "plus" : "default",
     outputDir: optionalString(row.output_dir), accountId: optionalString(row.account_id),
     remoteTaskId: optionalString(row.remote_task_id), status: String(row.status) as JobStatus,
     outputs: parseJson(row.outputs_json, undefined as JobResult | undefined), rawResult: parseJson(row.raw_result_json, undefined),

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from "electron";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
@@ -9,13 +9,14 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { RunningHubBackend } from "../core/index.js";
 import { InMemorySecretStore, PlainTextSecretStore } from "../core/secretStore.js";
-import type { Account, CreateJobInput, Job, WorkflowProfile, WorkflowRecord } from "../core/types.js";
+import type { Account, CreateJobInput, InstanceType, Job, WorkflowProfile, WorkflowRecord } from "../core/types.js";
 import { latestReleaseApiUrls, latestReleaseUrl, parseLatestRelease, trustedUpdateAssetPrefixes, updateRepositoryUrl } from "./updates.js";
 import type { UpdateInfo, UpdateProgress } from "./updates.js";
 
 interface RendererDraft {
   workflowId: string;
   profileVersion: number;
+  instanceType?: InstanceType;
   parameterValues: Record<string, unknown>;
   mediaOverrides: Record<string, { enabled: boolean; mode: "replace" | "clear"; localPath?: string }>;
 }
@@ -25,18 +26,39 @@ const smokeMode = process.argv.includes("--smoke");
 let mainWindow: BrowserWindow | undefined;
 let desktopSettingsPath = "";
 let defaultOutputDir = "";
+let thumbnailCacheDir = "";
 let updateInProgress = false;
+let applicationVersion = app.getVersion();
+let thumbnailQueue: Promise<void> = Promise.resolve();
+const thumbnailRequests = new Map<string, Promise<string | undefined>>();
 const runningHubApiKeysUrl = "https://www.runninghub.ai/zh-cn/call-api/bill-task?tab=keys&type=consumer";
+
+async function resolveApplicationVersion(): Promise<string> {
+  if (app.isPackaged) return app.getVersion();
+  const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.join(process.cwd(), "package.json"),
+    path.join(app.getAppPath(), "package.json"),
+    path.resolve(moduleDirectory, "..", "..", "..", "package.json"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(await readFile(candidate, "utf8")) as { version?: unknown };
+      if (typeof parsed.version === "string" && /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(parsed.version)) return parsed.version;
+    } catch {}
+  }
+  return app.getVersion();
+}
 
 async function checkForUpdate() {
   let lastError = "GitHub 更新服务暂不可用。";
   for (const apiUrl of latestReleaseApiUrls) {
     try {
       const response = await fetch(apiUrl, {
-        headers: { Accept: "application/vnd.github+json", "User-Agent": `RunningHub-Runner/${app.getVersion()}` },
+        headers: { Accept: "application/vnd.github+json", "User-Agent": `RunningHub-Runner/${applicationVersion}` },
         signal: AbortSignal.timeout(15_000),
       });
-      if (response.ok) return parseLatestRelease(await response.json(), app.getVersion());
+      if (response.ok) return parseLatestRelease(await response.json(), applicationVersion);
       lastError = `GitHub 返回 HTTP ${response.status}`;
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
@@ -99,7 +121,7 @@ async function downloadAndInstallUpdate(): Promise<{ started: true }> {
 
     sendUpdateProgress({ stage: "downloading", percent: 0, message: `正在下载 v${info.latestVersion}…` });
     const response = await fetch(info.assetUrl, {
-      headers: { Accept: "application/octet-stream", "User-Agent": `RunningHub-Runner/${app.getVersion()}` },
+      headers: { Accept: "application/octet-stream", "User-Agent": `RunningHub-Runner/${applicationVersion}` },
       redirect: "follow",
       signal: AbortSignal.timeout(10 * 60_000),
     });
@@ -198,6 +220,32 @@ async function saveDesktopSettings(settings: DesktopSettings): Promise<void> {
   await writeFile(desktopSettingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
 }
 
+function videoThumbnail(localPath: string): Promise<string | undefined> {
+  const existing = thumbnailRequests.get(localPath);
+  if (existing) return existing;
+  const request = thumbnailQueue.then(async () => {
+    if (!path.isAbsolute(localPath)) return undefined;
+    const resolved = await realpath(localPath).catch(() => undefined);
+    if (!resolved) return undefined;
+    const info = await stat(resolved).catch(() => undefined);
+    if (!info?.isFile()) return undefined;
+    const fingerprint = createHash("sha256")
+      .update(`${resolved}\0${info.size}\0${info.mtimeMs}`)
+      .digest("hex");
+    await mkdir(thumbnailCacheDir, { recursive: true });
+    const cached = path.join(thumbnailCacheDir, `${fingerprint}.png`);
+    if (await access(cached).then(() => true).catch(() => false)) return pathToFileURL(cached).toString();
+    const thumbnail = await nativeImage.createThumbnailFromPath(resolved, { width: 180, height: 320 });
+    if (thumbnail.isEmpty()) return undefined;
+    await writeFile(cached, thumbnail.toPNG());
+    return pathToFileURL(cached).toString();
+  }).catch(() => undefined);
+  thumbnailQueue = request.then(() => undefined, () => undefined);
+  const tracked = request.finally(() => thumbnailRequests.delete(localPath));
+  thumbnailRequests.set(localPath, tracked);
+  return tracked;
+}
+
 // Keep one desktop window per user. A second shortcut click focuses the
 // existing app instead of launching another instance that competes for files.
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -244,6 +292,7 @@ function jobView(job: Job) {
   });
   return {
     id: job.id, workflowName: job.workflowName, status: job.status, accountLabel: account?.label,
+    instanceType: job.instanceType,
     remoteTaskId: job.remoteTaskId, createdAt: job.createdAt, startedAt: job.assignedAt, completedAt: job.completedAt,
     generationStartedAt: job.generationStartedAt,
     generationCompletedAt: job.remoteCompletedAt ?? (job.status === "COMPLETED" ? job.completedAt : undefined),
@@ -260,6 +309,7 @@ function jobView(job: Job) {
     inputs: {
       workflowId: job.workflowId,
       profileVersion: job.profileVersion,
+      instanceType: job.instanceType,
       parameters: job.profileSnapshot.parameters
         .filter(parameter => parameter.visible !== false && !["image", "video", "audio"].includes(parameter.valueType))
         .map(parameter => ({
@@ -304,7 +354,7 @@ async function seedBundledWorkflows(): Promise<void> {
   }
 }
 
-function createJobInput(draft: RendererDraft): CreateJobInput {
+function createJobInput(draft: RendererDraft, outputDir: string): CreateJobInput {
   const workflow = backend.workflows.get(draft.workflowId);
   if (!workflow) throw new Error("工作流尚未导入桌面核心，请重新导入 API JSON。");
   if (workflow.profileVersion !== draft.profileVersion) throw new Error("工作流 Profile 已更新，请重新打开创建任务页面。");
@@ -323,7 +373,22 @@ function createJobInput(draft: RendererDraft): CreateJobInput {
       parameters[parameterId] = "";
     }
   }
-  return { workflowId: draft.workflowId, parameters, media };
+  // Freeze the selected download directory into the job snapshot. Relying
+  // only on the process-wide setting makes recovered jobs vulnerable to a
+  // restart or a later settings change and can silently fall back to the
+  // Electron user-data downloads folder.
+  return { workflowId: draft.workflowId, parameters, media, instanceType: draft.instanceType === "plus" ? "plus" : "default", outputDir };
+}
+
+async function currentOutputDir(): Promise<string> {
+  // The settings file is the durable source of truth. Re-read it when jobs
+  // are created so a stale process value can never route new output back to
+  // Electron's private user-data directory.
+  const settings = await readDesktopSettings();
+  const outputDir = settings.outputDir ?? defaultOutputDir;
+  await mkdir(outputDir, { recursive: true });
+  backend.config.outputDir = outputDir;
+  return outputDir;
 }
 
 function registerHandlers(): void {
@@ -345,7 +410,7 @@ function registerHandlers(): void {
     const options = { title: "导出工作流配置包", defaultPath: path.join(app.getPath("downloads"), suggestedName), filters: [{ name: "RunningHub Runner 工作流", extensions: ["json"] }] };
     const result = mainWindow ? await dialog.showSaveDialog(mainWindow, options) : await dialog.showSaveDialog(options);
     if (result.canceled || !result.filePath) return undefined;
-    const portable = backend.workflows.exportPortablePackage(id, app.getVersion());
+    const portable = backend.workflows.exportPortablePackage(id, applicationVersion);
     await writeFile(result.filePath, `${JSON.stringify(portable, null, 2)}\n`, "utf8");
     return result.filePath;
   });
@@ -380,13 +445,18 @@ function registerHandlers(): void {
     if (typeof localPath !== "string" || !path.isAbsolute(localPath)) throw new Error("拖入文件路径无效。");
     return { localPath, fileName: path.basename(localPath), previewUrl: pathToFileURL(localPath).toString() };
   });
+  ipcMain.handle("media:thumbnail", (_event, localPath: string) => videoThumbnail(localPath));
 
   ipcMain.handle("jobs:list", () => backend.jobs.list().map(jobView));
-  ipcMain.handle("jobs:create", (_event, draft: RendererDraft) => jobView(backend.jobs.create(createJobInput(draft))));
-  ipcMain.handle("jobs:createBatch", (_event, drafts: RendererDraft[]) => {
+  ipcMain.handle("jobs:create", async (_event, draft: RendererDraft) => {
+    const outputDir = await currentOutputDir();
+    return jobView(backend.jobs.create(createJobInput(draft, outputDir)));
+  });
+  ipcMain.handle("jobs:createBatch", async (_event, drafts: RendererDraft[]) => {
     if (!Array.isArray(drafts) || drafts.length === 0) throw new Error("批次中没有任务。");
     if (drafts.length > 500) throw new Error("单次最多提交 500 个任务。");
-    const inputs = drafts.map(createJobInput);
+    const outputDir = await currentOutputDir();
+    const inputs = drafts.map(draft => createJobInput(draft, outputDir));
     return inputs.map(input => jobView(backend.jobs.create(input)));
   });
   ipcMain.handle("jobs:cancel", async (_event, id: string) => jobView(await backend.scheduler.cancel(id)));
@@ -462,8 +532,10 @@ async function createWindow(): Promise<BrowserWindow> {
 }
 
 if (hasSingleInstanceLock) app.whenReady().then(async () => {
+  applicationVersion = await resolveApplicationVersion();
   const userData = app.getPath("userData");
   defaultOutputDir = path.join(userData, "downloads");
+  thumbnailCacheDir = path.join(userData, "thumbnail-cache");
   desktopSettingsPath = path.join(userData, "settings.json");
   const desktopSettings = await readDesktopSettings();
   const outputDir = desktopSettings.outputDir ?? defaultOutputDir;
@@ -484,7 +556,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
   await backend.start();
   if (smokeMode) {
     const connected = await window.webContents.executeJavaScript(`(async () => {
-      if (!window.runningHub?.jobs?.createBatch || !window.runningHub?.media || !window.runningHub?.downloads?.selectDirectory || !window.runningHub?.downloads?.resetDirectory || !window.runningHub?.updates?.check || !window.runningHub?.updates?.downloadAndInstall) return false;
+      if (!window.runningHub?.jobs?.createBatch || !window.runningHub?.media?.thumbnail || !window.runningHub?.downloads?.selectDirectory || !window.runningHub?.downloads?.resetDirectory || !window.runningHub?.updates?.check || !window.runningHub?.updates?.downloadAndInstall) return false;
       const [accounts, workflows, jobs] = await Promise.all([
         window.runningHub.accounts.list(), window.runningHub.workflows.list(), window.runningHub.jobs.list()
       ]);

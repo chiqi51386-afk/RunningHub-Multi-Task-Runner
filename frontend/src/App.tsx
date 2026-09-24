@@ -191,7 +191,7 @@ function isTerminalJobStatus(status: JobStatus) {
 function relativeTime(time?: number) {
   if (!time) return "从未";
   const seconds = Math.max(1, Math.round((Date.now() - time) / 1000));
-  if (seconds < 60) return `${seconds} 秒前`;
+  if (seconds < 60) return "刚刚";
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes} 分钟前`;
   const hours = Math.round(minutes / 60);
@@ -370,7 +370,7 @@ function App() {
         ? await window.runningHub.jobs.createBatch(drafts)
         : drafts.map(draft => {
           const workflow = workflows.find(w => w.id === draft.workflowId) ?? workflows[0];
-          return { id: crypto.randomUUID(), workflowName: workflow.name, status: "PENDING" as const, createdAt: Date.now(), outputType: "MP4" };
+          return { id: crypto.randomUUID(), workflowName: workflow.name, status: "PENDING" as const, instanceType: draft.instanceType, createdAt: Date.now(), outputType: "MP4" };
         });
       setJobs(current => [...created, ...current.filter(item => !created.some(job => job.id === item.id))]);
       setView("jobs");
@@ -409,6 +409,7 @@ function App() {
       return;
     }
     const draft = createDraft(workflow);
+    draft.instanceType = job.inputs.instanceType;
     for (const parameter of job.inputs.parameters) {
       if (workflow.parameters.some(item => item.id === parameter.id)) draft.parameterValues[parameter.id] = parameter.value;
     }
@@ -863,7 +864,7 @@ function createDraft(workflow?: WorkflowView): CreateJobDraft {
   for (const parameter of mediaParameters) {
     if (parameter.mediaControl?.autoEnableOnReplace) parameterValues[parameter.mediaControl.parameterId] = parameter.mediaControl.inactiveValue;
   }
-  return { workflowId: workflow?.id ?? "", profileVersion: workflow?.profileVersion ?? 0, parameterValues, mediaOverrides };
+  return { workflowId: workflow?.id ?? "", profileVersion: workflow?.profileVersion ?? 0, instanceType: "default", parameterValues, mediaOverrides };
 }
 
 function cloneDraft(draft: CreateJobDraft): CreateJobDraft {
@@ -1034,9 +1035,9 @@ const CreateJob = memo(function CreateJob({ workflows, initialWorkflowId, initia
         {(prompts.length > 0 || media.length > 0) && <div className="form-section"><div className="section-index">02</div><div className="section-content"><div className="section-title-row media-section-title"><div><h2>媒体输入</h2><p>按生成词、图片、音频、视频排序；未上传的媒体会在提交时清空，避免误用工作流内置素材。</p></div>{media.length > 0 && <div className="bulk-media-actions"><button type="button" onClick={clearAllMedia}>清空全部媒体</button></div>}</div>{prompts.length > 0 && <div className="content-prompt-block"><div className="content-input-label"><span>生成词</span><div><small>优先输入</small><button type="button" onClick={clearPrompts}>清空生成词</button></div></div><div className="dynamic-grid prompt-input-grid">{prompts.map(parameter => <ParameterField key={parameter.id} parameter={parameter} value={draft.parameterValues[parameter.id]} onChange={value => setValue(parameter, value)} />)}</div></div>}{media.length > 0 && <div className="media-stack">{media.map((parameter, index) => { const mediaDraft = draft.mediaOverrides[parameter.id] ?? { enabled: false, mode: "clear" as const }; return <MediaField key={parameter.id} index={index + 1} parameter={parameter} draft={mediaDraft} onPick={window.runningHub ? () => void pickDesktopMedia(parameter) : undefined} onDrop={file => acceptDroppedMedia(parameter, file)} onMove={sourceId => moveImageMedia(sourceId, parameter)} onChange={(mode, file) => setMedia(parameter, mode, file)} />; })}</div>}</div></div>}
         <div className="form-section"><div className="section-index">03</div><div className="section-content"><h2>生成参数设置</h2><p>这里只显示时长、画面比例、分辨率、种子等设置，不再重复显示提示词和媒体文件。</p>{generationParameters.length > 0 ? <div className="dynamic-grid">{generationParameters.map(parameter => <ParameterField key={parameter.id} parameter={parameter} value={draft.parameterValues[parameter.id]} onChange={value => setValue(parameter, value)} />)}</div> : <div className="empty-parameters">这个工作流没有其他生成参数。</div>}</div></div>
         {generic.length > 0 && <div className="form-section generic-section"><div className="section-index">04</div><div className="section-content"><div className="section-title-row"><div><h2>其他参数</h2><p>未识别参数不会丢弃，仍按 nodeId.fieldName 原样进入 Job Snapshot。</p></div><button type="button" className="secondary small" onClick={() => setShowGeneric(value => !value)}>{showGeneric ? "收起" : `展开 ${generic.length} 项`}</button></div>{showGeneric && <div className="dynamic-grid generic-grid">{generic.map(parameter => <ParameterField key={parameter.id} parameter={parameter} value={draft.parameterValues[parameter.id]} onChange={value => setValue(parameter, value)} />)}</div>}</div></div>}
-        <div className="submit-bar"><div className="submit-hint"><ShieldCheck size={17} /><span>可先加入制作批次，检查完成后一次入队</span></div><div className="submit-actions"><button className="secondary" type="button" onClick={saveDraftToBatch} disabled={!selected || submitting}>{editingBatchId ? "保存批次修改" : "加入制作批次"}</button><button className="primary submit" type="submit" disabled={!selected || submitting}>{submitting ? "正在创建…" : "提交当前任务"}</button></div></div>
+        <div className="submit-bar"><div className="submit-hint"><ShieldCheck size={17} /><span>可先加入制作批次，检查完成后一次入队</span></div><div className="instance-mode-control"><span><strong>Plus 高显存</strong><small>48GB 实例，费用可能更高</small></span><button type="button" className={`switch ${draft.instanceType === "plus" ? "checked" : ""}`} onClick={() => setDraft(current => ({ ...current, instanceType: current.instanceType === "plus" ? "default" : "plus" }))} aria-label="开启 Plus 高显存实例" aria-pressed={draft.instanceType === "plus"}><span /></button></div><div className="submit-actions"><button className="secondary" type="button" onClick={saveDraftToBatch} disabled={!selected || submitting}>{editingBatchId ? "保存批次修改" : "加入制作批次"}</button><button className="primary submit" type="submit" disabled={!selected || submitting}>{submitting ? "正在创建…" : "提交当前任务"}</button></div></div>
       </form>
-      <aside className="create-sidebar"><div className="panel batch-panel"><div className="batch-head"><div><p className="summary-kicker">制作批次</p><h2>待提交任务</h2></div><span>{batch.length}</span></div>{batch.length === 0 ? <div className="batch-empty">调整好当前任务后点击“加入制作批次”。每项都会保留自己的参数和媒体文件。</div> : <div className="batch-list">{batch.map((item, index) => { const workflow = workflows.find(entry => entry.id === item.draft.workflowId); const mediaCount = Object.values(item.draft.mediaOverrides).filter(entry => entry.mode === "replace").length; return <article className={editingBatchId === item.id ? "editing" : ""} key={item.id}><DraftThumbnail draft={item.draft} /><div><strong>{workflow?.name ?? "未知工作流"}</strong><small>任务 {String(index + 1).padStart(2, "0")} · {mediaCount} 个媒体文件</small></div><div className="batch-actions"><button type="button" onClick={() => editBatchItem(item.id)} aria-label="编辑批次任务"><Pencil size={14} /></button><button type="button" onClick={() => { setBatch(current => current.filter(entry => entry.id !== item.id)); if (editingBatchId === item.id) setEditingBatchId(undefined); }} aria-label="删除批次任务"><Trash2 size={14} /></button></div></article>; })}</div>}<button className="primary batch-submit" type="button" disabled={!batch.length || submitting} onClick={() => void submitDrafts(batch.map(item => item.draft))}>{submitting ? "正在批量创建…" : `批量提交 ${batch.length} 个任务`}<ArrowRight size={16} /></button></div></aside>
+      <aside className="create-sidebar"><div className="panel batch-panel"><div className="batch-head"><div><p className="summary-kicker">制作批次</p><h2>待提交任务</h2></div><span>{batch.length}</span></div>{batch.length === 0 ? <div className="batch-empty">调整好当前任务后点击“加入制作批次”。每项都会保留自己的参数和媒体文件。</div> : <div className="batch-list">{batch.map((item, index) => { const workflow = workflows.find(entry => entry.id === item.draft.workflowId); const mediaCount = Object.values(item.draft.mediaOverrides).filter(entry => entry.mode === "replace").length; return <article className={editingBatchId === item.id ? "editing" : ""} key={item.id}><DraftThumbnail draft={item.draft} /><div><strong>{workflow?.name ?? "未知工作流"}{item.draft.instanceType === "plus" && <b className="instance-badge">PLUS</b>}</strong><small>任务 {String(index + 1).padStart(2, "0")} · {mediaCount} 个媒体文件</small></div><div className="batch-actions"><button type="button" onClick={() => editBatchItem(item.id)} aria-label="编辑批次任务"><Pencil size={14} /></button><button type="button" onClick={() => { setBatch(current => current.filter(entry => entry.id !== item.id)); if (editingBatchId === item.id) setEditingBatchId(undefined); }} aria-label="删除批次任务"><Trash2 size={14} /></button></div></article>; })}</div>}<button className="primary batch-submit" type="button" disabled={!batch.length || submitting} onClick={() => void submitDrafts(batch.map(item => item.draft))}>{submitting ? "正在批量创建…" : `批量提交 ${batch.length} 个任务`}<ArrowRight size={16} /></button></div></aside>
     </div>
   </>;
 });
@@ -1149,7 +1150,7 @@ function Jobs({ jobs, onCancel, onRegenerate, onDelete, onReveal }: { jobs: JobV
 function JobRow({ job, compact, onCancel, onRegenerate, onDelete, onPreview, onReveal }: { job: JobView; compact?: boolean; onCancel?: (id: string) => void; onRegenerate?: () => void; onDelete?: () => void; onPreview?: () => void; onReveal?: (localPath: string) => void }) {
   const terminal = isTerminalJobStatus(job.status);
   const showElapsed = Boolean(job.generationStartedAt) && (activeJobStatuses.has(job.status) || job.status === "COMPLETED");
-  return <article className={`job-row ${compact ? "compact" : ""}`}><JobThumbnail job={job} /><div className="job-main"><div className="job-title"><strong>{job.workflowName}</strong><StatusPill status={job.status} /></div><div className="job-meta"><span>{job.remoteTaskId ? `taskId ${job.remoteTaskId}` : "等待分配远端任务"}</span>{job.accountLabel && <><i /><span>{job.accountLabel}</span></>}<i /><span>{relativeTime(job.createdAt)}</span>{job.stageLabel && <><i /><span>{job.stageLabel}</span></>}{showElapsed && <><i /><ElapsedTime job={job} /></>}{job.inputs?.media.length ? <><i /><span>{job.inputs.media.length} 个媒体槽</span></> : null}{job.outputs?.length ? <><i /><span>{job.outputs.length} 个输出</span></> : null}</div>{job.error && job.status !== "SUBMIT_UNKNOWN" && <><p className="job-error">{job.status === "FAILED" ? localizedFailureReason(job.error, job.status) : job.error}</p>{job.errorDetail && <details className="job-error-detail"><summary>查看错误详情</summary><span>类型：{job.errorDetail.code}</span><span>阶段：{job.errorDetail.phase}</span>{job.errorDetail.remoteCode && <span>RunningHub：{job.errorDetail.remoteCode}</span>}{job.errorDetail.nodeId && <span>节点：{job.errorDetail.nodeId}{job.errorDetail.nodeName ? `（${job.errorDetail.nodeName}）` : ""}</span>}</details>}</>}{job.status === "SUBMIT_UNKNOWN" && <p className="job-error">{localizedFailureReason(job.error, job.status)}</p>}{!compact && !terminal && <div className="progress indeterminate"><span /></div>}</div>{!compact && <div className="job-actions">{job.status === "COMPLETED" && onPreview && <button className="primary small" onClick={onPreview}><Play size={14} />任务预览</button>}{onRegenerate && job.inputs && <button className="secondary small" onClick={onRegenerate}><RefreshCw size={14} />再次生成</button>}{job.outputs?.[0]?.localPath && onReveal && <button className="secondary small" onClick={() => onReveal(job.outputs![0]!.localPath!)}><FolderOpen size={14} />显示文件</button>}{!terminal && <button className="danger-button small" onClick={() => onCancel?.(job.id)}><Square size={13} />{["DOWNLOAD_PENDING", "DOWNLOADING"].includes(job.status) || (job.status === "RETRY_WAIT" && job.retryPhase === "download") ? "取消下载" : "停止生成"}</button>}{terminal && onDelete && <button className="icon-button danger" onClick={onDelete} title="删除任务"><Trash2 size={15} /></button>}</div>}</article>;
+  return <article className={`job-row ${compact ? "compact" : ""}`}><JobThumbnail job={job} /><div className="job-main"><div className="job-title"><strong>{job.workflowName}</strong>{job.instanceType === "plus" && <b className="instance-badge">PLUS</b>}<StatusPill status={job.status} /></div><div className="job-meta"><span>{job.remoteTaskId ? `taskId ${job.remoteTaskId}` : "等待分配远端任务"}</span>{job.accountLabel && <><i /><span>{job.accountLabel}</span></>}<i /><span>{relativeTime(job.createdAt)}</span>{job.stageLabel && <><i /><span>{job.stageLabel}</span></>}{showElapsed && <><i /><ElapsedTime job={job} /></>}{job.inputs?.media.length ? <><i /><span>{job.inputs.media.length} 个媒体槽</span></> : null}{job.outputs?.length ? <><i /><span>{job.outputs.length} 个输出</span></> : null}</div>{job.error && job.status !== "SUBMIT_UNKNOWN" && <><p className="job-error">{job.status === "FAILED" ? localizedFailureReason(job.error, job.status) : job.error}</p>{job.errorDetail && <details className="job-error-detail"><summary>查看错误详情</summary><span>类型：{job.errorDetail.code}</span><span>阶段：{job.errorDetail.phase}</span>{job.errorDetail.remoteCode && <span>RunningHub：{job.errorDetail.remoteCode}</span>}{job.errorDetail.nodeId && <span>节点：{job.errorDetail.nodeId}{job.errorDetail.nodeName ? `（${job.errorDetail.nodeName}）` : ""}</span>}</details>}</>}{job.status === "SUBMIT_UNKNOWN" && <p className="job-error">{localizedFailureReason(job.error, job.status)}</p>}{!compact && !terminal && <div className="progress indeterminate"><span /></div>}</div>{!compact && <div className="job-actions">{job.status === "COMPLETED" && onPreview && <button className="primary small" onClick={onPreview}><Play size={14} />任务预览</button>}{onRegenerate && job.inputs && <button className="secondary small" onClick={onRegenerate}><RefreshCw size={14} />再次生成</button>}{job.outputs?.[0]?.localPath && onReveal && <button className="secondary small" onClick={() => onReveal(job.outputs![0]!.localPath!)}><FolderOpen size={14} />显示文件</button>}{!terminal && <button className="danger-button small" onClick={() => onCancel?.(job.id)}><Square size={13} />{["DOWNLOAD_PENDING", "DOWNLOADING"].includes(job.status) || (job.status === "RETRY_WAIT" && job.retryPhase === "download") ? "取消下载" : "停止生成"}</button>}{terminal && onDelete && <button className="icon-button danger" onClick={onDelete} title="删除任务"><Trash2 size={15} /></button>}</div>}</article>;
 }
 
 function ElapsedTime({ job }: { job: JobView }) {
@@ -1179,9 +1180,24 @@ function JobThumbnail({ job }: { job: JobView }) {
   const source = output?.previewUrl ?? output?.url ?? input?.previewUrl;
   const type = output ? ((/video/i.test(output.type ?? "") || /\.(mp4|webm|mov)(?:$|\?)/i.test(source ?? "")) ? "video" : "image") : input?.type;
   if (source && type === "image") return <div className="job-thumbnail"><img src={source} alt="任务缩略图" /></div>;
-  if (source && type === "video") return <div className="job-thumbnail"><video src={source} muted playsInline preload="metadata" onLoadedMetadata={event => { const video = event.currentTarget; if (Number.isFinite(video.duration) && video.duration > 0) video.currentTime = Math.min(.15, video.duration / 2); }} /></div>;
+  if (source && type === "video") return <StaticVideoThumbnail localPath={output?.localPath ?? input?.localPath} />;
   if (audio) return <div className="job-thumbnail audio" title={audio.fileName}><Music2 size={18} /><span>音频</span></div>;
   return <div className="job-thumbnail fallback">{job.outputType === "MP4" ? <Play size={17} /> : <FileJson size={17} />}</div>;
+}
+
+function StaticVideoThumbnail({ localPath }: { localPath?: string }) {
+  const [thumbnailUrl, setThumbnailUrl] = useState<string>();
+  useEffect(() => {
+    let active = true;
+    if (!localPath || !window.runningHub?.media.thumbnail) return;
+    void window.runningHub.media.thumbnail(localPath).then(url => {
+      if (active && url) setThumbnailUrl(url);
+    });
+    return () => { active = false; };
+  }, [localPath]);
+  return thumbnailUrl
+    ? <div className="job-thumbnail"><img src={thumbnailUrl} alt="视频静态缩略图" /></div>
+    : <div className="job-thumbnail fallback"><Play size={17} /></div>;
 }
 
 function formatSnapshotValue(value: unknown): string {

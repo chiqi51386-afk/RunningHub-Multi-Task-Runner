@@ -7,6 +7,8 @@ import type { Account, AccountWithSecret, RunningHubClientLike, RunningHubConfig
 export type ClientFactory = (apiKey: string) => RunningHubClientLike;
 
 export class AccountPool {
+  private readonly refreshes = new Map<string, Promise<Account>>();
+
   constructor(
     private readonly db: CoreDatabase,
     private readonly config: RunningHubConfig,
@@ -61,6 +63,16 @@ export class AccountPool {
   }
 
   async refresh(id: string): Promise<Account> {
+    const active = this.refreshes.get(id);
+    if (active) return active;
+    const refresh = this.performRefresh(id).finally(() => {
+      if (this.refreshes.get(id) === refresh) this.refreshes.delete(id);
+    });
+    this.refreshes.set(id, refresh);
+    return refresh;
+  }
+
+  private async performRefresh(id: string): Promise<Account> {
     let account = this.db.getAccount(id);
     if (!account) throw new Error(`Account not found: ${id}`);
     if (!account.enabled || account.manualDisabled) {
@@ -122,7 +134,7 @@ export class AccountPool {
   }
 
   async refreshAll(): Promise<Account[]> {
-    const enabled = this.list().filter(account => account.enabled);
+    const enabled = this.list().filter(account => account.enabled && !account.manualDisabled);
     const refreshed: Account[] = [];
     for (const account of enabled) {
       refreshed.push(await this.refresh(account.id));

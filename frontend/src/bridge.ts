@@ -40,6 +40,7 @@ export interface RunningHubRendererBridge {
   media: {
     select(type: "image" | "video" | "audio"): Promise<{ localPath: string; fileName: string; previewUrl: string } | undefined>;
     fromDroppedFile(file: File): Promise<{ localPath: string; fileName: string; previewUrl: string }>;
+    thumbnail(localPath: string): Promise<string | undefined>;
   };
   downloads: {
     directory(): Promise<string>;

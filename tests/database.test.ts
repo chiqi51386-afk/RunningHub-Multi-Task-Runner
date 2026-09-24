@@ -21,6 +21,7 @@ test("job freezes workflow profile and account/job claim is atomic", () => {
   try {
     const wf = workflows.importApiJson({ name: "A", runningHubWorkflowId: "123456789012", workflow });
     const job = jobs.create({ workflowId: wf.id, parameters: { prompt: "snapshot" } });
+    assert.equal(jobs.get(job.id)?.instanceType, "default");
     const changed = structuredClone(wf.profile);
     changed.parameters[0]!.label = "Updated label";
     workflows.updateProfile(wf.id, changed);
@@ -28,7 +29,7 @@ test("job freezes workflow profile and account/job claim is atomic", () => {
     assert.equal(jobs.get(job.id)?.profileSnapshot.parameters[0]?.label, undefined);
 
     const account = db.addAccount("A", "key-a");
-    db.updateAccount(account.id, { state: "IDLE" });
+    db.updateAccount(account.id, { state: "IDLE", remoteTaskCount: 1, lastCheckedAt: 123 });
     const claimed = db.claimNextJob(account.id, 10);
     assert.equal(claimed?.id, job.id);
     assert.equal(claimed?.status, "ASSIGNED");
@@ -39,8 +40,24 @@ test("job freezes workflow profile and account/job claim is atomic", () => {
     assert.equal(db.getAccount(account.id)?.currentJobId, job.id);
     db.releaseAccount(account.id, job.id, true);
     assert.equal(db.getAccount(account.id)?.currentJobId, undefined);
+    assert.equal(db.getAccount(account.id)?.lastRemoteTaskCount, undefined);
+    assert.equal(db.getAccount(account.id)?.lastCheckedAt, undefined);
     db.releaseAccount(account.id, job.id, true);
     assert.equal(db.getAccount(account.id)?.state, "IDLE");
+  } finally {
+    db.close();
+  }
+});
+
+test("job snapshots persist the selected RunningHub instance type", () => {
+  const db = new CoreDatabase(":memory:", new InMemorySecretStore());
+  const events = new BackendEvents();
+  const workflows = new Workflows(db, events);
+  const jobs = new Jobs(db, events);
+  try {
+    const wf = workflows.importApiJson({ name: "Plus", runningHubWorkflowId: "123456789012", workflow });
+    const plusJob = jobs.create({ workflowId: wf.id, parameters: {}, instanceType: "plus" });
+    assert.equal(jobs.get(plusJob.id)?.instanceType, "plus");
   } finally {
     db.close();
   }

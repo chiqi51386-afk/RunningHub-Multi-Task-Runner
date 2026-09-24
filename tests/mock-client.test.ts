@@ -52,3 +52,24 @@ test("mock client exposes deterministic RunningHub error scenarios", async () =>
   const failed = new MockRunningHubClient({ query: [{ status: "FAILED", errorCode: 805, errorMessage: "node failed" }] });
   await assert.rejects(() => failed.pollTask("task"));
 });
+
+test("scheduler preserves a Plus job snapshot through submission", async () => {
+  const client = new MockRunningHubClient({ query: [{ status: "SUCCESS", results: [{ text: "done" }] }] });
+  const backend = new RunningHubBackend({
+    databasePath: ":memory:", logger: new NullLogger(), clientFactory: () => client,
+    config: { pollIntervalMs: 1, pollJitterMs: 0 },
+  });
+  try {
+    backend.accounts.add("Plus", "key-plus");
+    const workflow = backend.workflows.importApiJson({
+      name: "Plus", runningHubWorkflowId: "123456789012",
+      workflow: { "1": { class_type: "Text", inputs: { text: "default" }, _meta: { title: "Prompt" } } },
+    });
+    const job = backend.jobs.create({ workflowId: workflow.id, parameters: {}, instanceType: "plus" });
+    await backend.start();
+    await waitFor(() => backend.jobs.get(job.id)?.status === "COMPLETED");
+    assert.equal(client.submissions[0]?.instanceType, "plus");
+  } finally {
+    await backend.close();
+  }
+});

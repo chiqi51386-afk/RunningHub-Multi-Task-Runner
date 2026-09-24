@@ -235,9 +235,12 @@ export interface JobSnapshot {
   profileSnapshot: WorkflowProfile;
   parameters: Record<string, unknown>;
   media: JobMedia[];
+  instanceType: InstanceType;
   outputDir?: string;
   createdAt: number;
 }
+
+export type InstanceType = "default" | "plus";
 
 export type JobStatus =
   | "PENDING"
@@ -328,6 +331,7 @@ export interface CreateJobInput {
   workflowId: string;
   parameters: Record<string, unknown>;
   media?: JobMedia[];
+  instanceType?: InstanceType;
   outputDir?: string;
 }
 
@@ -341,7 +345,7 @@ export interface PollOptions {
 export interface RunningHubClientLike {
   accountStatus(): Promise<AccountStatus>;
   uploadMedia(filePath: string): Promise<{ value: string; raw: unknown }>;
-  runWorkflow(workflowId: string, nodeInfoList: NodeInfo[]): Promise<string>;
+  runWorkflow(workflowId: string, nodeInfoList: NodeInfo[], options?: { instanceType?: InstanceType }): Promise<string>;
   queryTask(taskId: string): Promise<Record<string, unknown>>;
   pollTask(taskId: string, options?: PollOptions): Promise<JobResult>;
   cancelTask(taskId: string): Promise<void>;

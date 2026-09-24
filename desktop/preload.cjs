@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("runningHub", {
       if (!localPath) throw new Error("无法读取拖入文件的本地路径。");
       return ipcRenderer.invoke("media:fromDroppedPath", localPath);
     },
+    thumbnail: localPath => ipcRenderer.invoke("media:thumbnail", localPath),
   },
   jobs: {
     list: () => ipcRenderer.invoke("jobs:list"),

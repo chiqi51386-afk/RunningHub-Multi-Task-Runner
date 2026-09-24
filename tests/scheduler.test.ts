@@ -480,6 +480,84 @@ test("zero remainCoins marks an account as insufficient even when remainMoney is
   } finally { await backend.close(); }
 });
 
+test("startup rechecks an auto-disabled no-balance account and restores it after recharge", async () => {
+  let statusChecks = 0;
+  const backend = new RunningHubBackend({
+    databasePath: ":memory:", logger: new NullLogger(),
+    fetch: async input => {
+      if (!String(input).endsWith("/accountStatus")) throw new Error(`Unexpected URL ${String(input)}`);
+      statusChecks += 1;
+      return Response.json({ code: 0, data: { remainCoins: "88", currentTaskCounts: 0 } });
+    },
+  });
+  try {
+    const account = backend.accounts.add("Recharged", "recharged-key");
+    backend.database.updateAccount(account.id, {
+      state: "NO_BALANCE", coins: "0", autoDisabled: true,
+      autoDisabledReason: "no_balance", lastCheckedAt: Date.now(),
+    });
+    await backend.start();
+    const recovered = backend.accounts.get(account.id)!;
+    assert.equal(statusChecks, 1);
+    assert.equal(recovered.state, "IDLE");
+    assert.equal(recovered.autoDisabled, false);
+    assert.equal(recovered.coins, "88");
+  } finally { await backend.close(); }
+});
+
+test("startup revalidates a cached idle account instead of trusting stale process state", async () => {
+  let statusChecks = 0;
+  const backend = new RunningHubBackend({
+    databasePath: ":memory:", logger: new NullLogger(),
+    fetch: async input => {
+      if (!String(input).endsWith("/accountStatus")) throw new Error(`Unexpected URL ${String(input)}`);
+      statusChecks += 1;
+      return Response.json({ code: 0, data: { remainCoins: "100", currentTaskCounts: 0 } });
+    },
+  });
+  try {
+    const account = backend.accounts.add("Cached", "cached-key");
+    backend.database.updateAccount(account.id, { state: "IDLE", coins: "100", lastCheckedAt: Date.now() });
+    await backend.start();
+    assert.equal(statusChecks, 1);
+    assert.equal(backend.accounts.get(account.id)?.state, "IDLE");
+  } finally { await backend.close(); }
+});
+
+test("a queued job does not wait for every stale account in a large pool", async () => {
+  let statusChecks = 0;
+  const mockFetch: typeof fetch = async input => {
+    const url = String(input);
+    if (url.endsWith("/accountStatus")) {
+      statusChecks += 1;
+      await new Promise(resolve => setTimeout(resolve, 10));
+      return Response.json({ code: 0, data: { remainCoins: "100", currentTaskCounts: 0 } });
+    }
+    if (url.includes("/run/workflow/")) return Response.json({ code: 0, data: { taskId: "fast-dispatch" } });
+    if (url.endsWith("/query")) return Response.json({ status: "SUCCESS", results: [{ text: "done" }] });
+    throw new Error(`Unexpected URL ${url}`);
+  };
+  const backend = new RunningHubBackend({
+    databasePath: ":memory:", fetch: mockFetch, logger: new NullLogger(),
+    config: { pollIntervalMs: 1, pollJitterMs: 0, accountFreshnessMs: 1_000 },
+  });
+  try {
+    for (let index = 0; index < 8; index += 1) backend.accounts.add(`Account ${index + 1}`, `key-${index + 1}`);
+    const wf = backend.workflows.importApiJson({
+      name: "Fast dispatch", runningHubWorkflowId: "123456789012",
+      workflow: { "1": { class_type: "Text", inputs: { text: "default" }, _meta: { title: "Prompt" } } },
+    });
+    await backend.start();
+    for (const account of backend.accounts.list()) {
+      backend.database.updateAccount(account.id, { lastCheckedAt: Date.now() - 60_000 });
+    }
+    statusChecks = 0;
+    const job = backend.jobs.create({ workflowId: wf.id, parameters: { prompt: "x" } });
+    await waitFor(() => backend.jobs.get(job.id)?.status === "COMPLETED");
+    assert.equal(statusChecks, 1);
+  } finally { await backend.close(); }
+});
+
 test("generation duration starts only when RunningHub first reports RUNNING", async () => {
   let queryCalls = 0;
   const mockFetch: typeof fetch = async input => {

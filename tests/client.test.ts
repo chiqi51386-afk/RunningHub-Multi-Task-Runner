@@ -38,6 +38,19 @@ test("client follows official auth, upload, submit, query, and output contract",
   });
 });
 
+test("client sends the documented Plus instance type only when explicitly enabled", async () => {
+  const bodies: unknown[] = [];
+  const mockFetch: typeof fetch = async (_input, init = {}) => {
+    bodies.push(JSON.parse(String(init.body)));
+    return Response.json({ code: 0, data: { taskId: `task-${bodies.length}` } });
+  };
+  const client = new RunningHubClient("secret-key", resolveConfig(), mockFetch);
+  await client.runWorkflow("123", [], { instanceType: "plus" });
+  await client.runWorkflow("123", [], { instanceType: "default" });
+  assert.deepEqual(bodies[0], { nodeInfoList: [], instanceType: "plus" });
+  assert.deepEqual(bodies[1], { nodeInfoList: [] });
+});
+
 test("secret masking removes query, bearer, and authorization forms", () => {
   const masked = maskSecrets("apiKey=abc123 Authorization: Bearer token.xyz Bearer another-token");
   assert.equal(masked.includes("abc123"), false);

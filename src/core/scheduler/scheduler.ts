@@ -19,6 +19,7 @@ export class Scheduler {
   private readonly activePromises = new Set<Promise<void>>();
   private readonly controllers = new Map<string, AbortController>();
   private readonly retryTimers = new Map<string, NodeJS.Timeout>();
+  private readonly startupAuditPending = new Set<string>();
   private accountWakeTimer?: NodeJS.Timeout;
   private accountWakeAt?: number;
 
@@ -37,11 +38,27 @@ export class Scheduler {
     this.running = true;
     this.downloads.start();
     await this.recoverJobs();
-    const unchecked = this.accounts.list().filter(account => account.enabled && account.state === "UNCHECKED");
-    for (const [index, account] of unchecked.entries()) {
-      await this.accounts.refresh(account.id);
-      if (index < unchecked.length - 1) await new Promise(resolve => setTimeout(resolve, 350));
+    // Recheck every enabled, unclaimed account on each process start. This is
+    // deliberately not limited to UNCHECKED: an account that previously had
+    // no balance, an invalid key, or a temporary error may have recovered
+    // while the application was closed. Account refresh events allow newly
+    // healthy accounts to start claiming queued work before the audit ends.
+    const startupAudit = this.accounts.list().filter(account =>
+      account.enabled && !account.manualDisabled && !account.currentJobId);
+    for (const account of startupAudit) this.startupAuditPending.add(account.id);
+    for (const account of startupAudit) {
+      if (!this.running) break;
+      try {
+        await this.accounts.refresh(account.id);
+      } finally {
+        this.startupAuditPending.delete(account.id);
+      }
+      // The refresh event fires before the account is removed from the startup
+      // exclusion set, so schedule once more after the verified account becomes
+      // eligible. Other unverified cached IDLE accounts remain excluded.
+      await this.schedule();
     }
+    this.startupAuditPending.clear();
     await this.schedule();
   }
 
@@ -170,19 +187,27 @@ export class Scheduler {
       // client submitted it, or an older app version lost/deleted its local
       // record). Keep transient account states fresh even when our local
       // queue is empty, otherwise REMOTE_BUSY can remain on screen forever.
-      await this.refreshTransientAccounts();
+      // Background account recovery must never hold up queued work. When the
+      // queue is empty we can audit every due transient account; with pending
+      // jobs, the loop below probes only until it finds enough usable accounts.
+      if (this.db.pendingCount() === 0) await this.refreshTransientAccounts();
       while (this.running && this.db.pendingCount() > 0) {
-        let available = this.accounts.available();
+        let available = this.availableAccounts();
         if (!available.length) {
-          const candidates = this.accounts.list().filter(account => account.enabled && !account.currentJobId &&
-            (["UNCHECKED", "REMOTE_BUSY", "TEMP_UNAVAILABLE"].includes(account.state) ||
+          const candidates = this.accounts.list().filter(account => account.enabled && !account.manualDisabled && !account.currentJobId &&
+            (["UNCHECKED", "REMOTE_BUSY", "TEMP_UNAVAILABLE", "NO_BALANCE", "INVALID_KEY"].includes(account.state) ||
               (account.state === "COOLDOWN" && (account.cooldownUntil ?? 0) <= Date.now())));
-          const staleCandidates = candidates.filter(account => account.state === "COOLDOWN" || !this.accounts.isFresh(account));
+          const staleCandidates = candidates.filter(account => this.accountProbeDue(account));
           if (staleCandidates.length) {
-            for (const account of staleCandidates) await this.accounts.refresh(account.id);
-            available = this.accounts.available();
+            // Probe one account at a time and dispatch immediately when one
+            // recovers. Do not make the first job wait for a full pool scan.
+            for (const account of staleCandidates) {
+              await this.accounts.refresh(account.id);
+              available = this.availableAccounts().filter(item => item.id === account.id);
+              if (available.length) break;
+            }
           } else if (candidates.length) {
-            const nextCheckAt = Math.min(...candidates.map(account => (account.lastCheckedAt ?? 0) + this.config.accountFreshnessMs));
+            const nextCheckAt = Math.min(...candidates.map(account => this.accountNextProbeAt(account)));
             this.queueAccountWake(Math.max(10, nextCheckAt - Date.now()));
           }
           const futureCooldowns = this.accounts.list().filter(account => account.enabled && !account.currentJobId &&
@@ -193,22 +218,20 @@ export class Scheduler {
           }
           if (!available.length) break;
         }
-        const stale = available.filter(account => !this.accounts.isFresh(account));
-        if (stale.length) {
-          for (const account of stale) await this.accounts.refresh(account.id);
-          available = this.accounts.available();
-        }
-        if (!available.length) break;
-        let claimedAny = false;
-        for (const account of available) {
-          if (!this.running) break;
-          const job = this.db.claimNextJob(account.id);
-          if (!job) continue;
-          claimedAny = true;
-          this.events.emit("account.updated", this.db.getAccount(account.id)!);
-          this.events.emit("job.updated", job);
-          this.events.emit("queue.updated", this.db.pendingCount());
-          this.launch(job.id);
+        // Fresh accounts can start immediately. Stale accounts are refreshed
+        // lazily and each one can claim a job as soon as its own check passes.
+        // This keeps dispatch latency proportional to the number of queued
+        // jobs, rather than to the total number of configured API keys.
+        const fresh = available.filter(account => this.accounts.isFresh(account));
+        let claimedAny = this.claimJobs(fresh);
+        if (this.db.pendingCount() > 0) {
+          const stale = available.filter(account => !this.accounts.isFresh(account));
+          for (const account of stale) {
+            if (!this.running || this.db.pendingCount() === 0) break;
+            await this.accounts.refresh(account.id);
+            const refreshed = this.availableAccounts().find(item => item.id === account.id);
+            if (refreshed) claimedAny = this.claimJobs([refreshed]) || claimedAny;
+          }
         }
         if (!claimedAny) break;
       }
@@ -217,15 +240,28 @@ export class Scheduler {
     }
   }
 
+  private claimJobs(accounts: ReturnType<AccountPool["list"]>): boolean {
+    let claimedAny = false;
+    for (const account of accounts) {
+      if (!this.running || this.db.pendingCount() === 0) break;
+      const job = this.db.claimNextJob(account.id);
+      if (!job) continue;
+      claimedAny = true;
+      this.events.emit("account.updated", this.db.getAccount(account.id)!);
+      this.events.emit("job.updated", job);
+      this.events.emit("queue.updated", this.db.pendingCount());
+      this.launch(job.id);
+    }
+    return claimedAny;
+  }
+
   private async refreshTransientAccounts(): Promise<void> {
     const now = Date.now();
     const isTransient = (account: ReturnType<AccountPool["list"]>[number]) =>
-      account.enabled && !account.currentJobId &&
-      ["REMOTE_BUSY", "TEMP_UNAVAILABLE", "COOLDOWN"].includes(account.state);
+      account.enabled && !account.manualDisabled && !account.currentJobId &&
+      ["REMOTE_BUSY", "TEMP_UNAVAILABLE", "COOLDOWN", "NO_BALANCE", "INVALID_KEY"].includes(account.state);
     const candidates = this.accounts.list().filter(isTransient);
-    const due = candidates.filter(account => account.state === "COOLDOWN"
-      ? (account.cooldownUntil ?? 0) <= now
-      : !this.accounts.isFresh(account, now));
+    const due = candidates.filter(account => this.accountProbeDue(account, now));
 
     for (const [index, account] of due.entries()) {
       if (!this.running) return;
@@ -235,10 +271,33 @@ export class Scheduler {
 
     const remaining = this.accounts.list().filter(isTransient);
     if (!remaining.length) return;
-    const nextCheckAt = Math.min(...remaining.map(account => account.state === "COOLDOWN"
-      ? Math.max(account.cooldownUntil ?? now, now + 10)
-      : Math.max((account.lastCheckedAt ?? now) + this.config.accountFreshnessMs + 1, now + 10)));
+    const nextCheckAt = Math.min(...remaining.map(account =>
+      Math.max(this.accountNextProbeAt(account), now + 10)));
     this.queueAccountWake(Math.max(10, nextCheckAt - Date.now()));
+  }
+
+  private availableAccounts() {
+    return this.accounts.available().filter(account => !this.startupAuditPending.has(account.id));
+  }
+
+  private accountProbeInterval(account: ReturnType<AccountPool["list"]>[number]): number {
+    switch (account.state) {
+      case "UNCHECKED": return 0;
+      case "REMOTE_BUSY": return Math.min(30_000, this.config.accountFreshnessMs);
+      case "TEMP_UNAVAILABLE": return Math.min(60_000, this.config.accountFreshnessMs);
+      case "NO_BALANCE": return 30 * 60_000;
+      case "INVALID_KEY": return 6 * 60 * 60_000;
+      default: return this.config.accountFreshnessMs;
+    }
+  }
+
+  private accountNextProbeAt(account: ReturnType<AccountPool["list"]>[number]): number {
+    if (account.state === "COOLDOWN") return account.cooldownUntil ?? 0;
+    return (account.lastCheckedAt ?? 0) + this.accountProbeInterval(account);
+  }
+
+  private accountProbeDue(account: ReturnType<AccountPool["list"]>[number], now = Date.now()): boolean {
+    return this.accountNextProbeAt(account) <= now;
   }
 
   private launch(jobId: string): void {
@@ -308,7 +367,7 @@ export class Scheduler {
         const nodes = buildNodeInfoList(job.profileSnapshot, job.parameters, job.media);
         let taskId: string;
         try {
-          taskId = await client.runWorkflow(job.runningHubWorkflowId, nodes);
+          taskId = await client.runWorkflow(job.runningHubWorkflowId, nodes, { instanceType: job.instanceType });
         } catch (error) {
           await this.handleSubmitFailure(job, error);
           return;
@@ -486,6 +545,10 @@ export class Scheduler {
 
   private async recoverJobs(): Promise<void> {
     for (let job of this.jobs.list()) {
+      if (!job.outputDir && !["COMPLETED", "FAILED", "CANCELLED", "SUBMIT_UNKNOWN"].includes(job.status)) {
+        job = this.db.updateJob(job.id, { outputDir: this.config.outputDir });
+        this.events.emit("job.updated", job);
+      }
       if (job.status === "CANCELLED" && hasConfirmedRemoteSuccess(job)) {
         job = this.jobs.recoverTransition(job.id, "REMOTE_SUCCESS", {
           lastError: null, remoteCompletedAt: job.remoteCompletedAt ?? job.completedAt ?? Date.now(), completedAt: null,

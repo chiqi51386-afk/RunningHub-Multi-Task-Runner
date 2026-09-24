@@ -1,4 +1,4 @@
-import type { AccountStatus, JobResult, NodeInfo, PollOptions, RunningHubClientLike } from "../types.js";
+import type { AccountStatus, InstanceType, JobResult, NodeInfo, PollOptions, RunningHubClientLike } from "../types.js";
 import { classifyRunningHubError, RunningHubError, terminalTaskError } from "./errors.js";
 import { normalizedJobResult, normalizeRunningHubResponse } from "./normalizer.js";
 
@@ -15,7 +15,7 @@ export interface MockRunningHubScenario {
 
 export class MockRunningHubClient implements RunningHubClientLike {
   readonly calls = { account: 0, upload: 0, submit: 0, query: 0, cancel: 0 };
-  readonly submissions: Array<{ workflowId: string; nodeInfoList: NodeInfo[] }> = [];
+  readonly submissions: Array<{ workflowId: string; nodeInfoList: NodeInfo[]; instanceType: InstanceType }> = [];
   private queryIndex = 0;
 
   constructor(private readonly scenario: MockRunningHubScenario = {}) {}
@@ -33,9 +33,9 @@ export class MockRunningHubClient implements RunningHubClientLike {
     return { value, raw: this.scenario.upload?.raw ?? { code: 0, data: { fileName: value } } };
   }
 
-  async runWorkflow(workflowId: string, nodeInfoList: NodeInfo[]): Promise<string> {
+  async runWorkflow(workflowId: string, nodeInfoList: NodeInfo[], options: { instanceType?: InstanceType } = {}): Promise<string> {
     this.calls.submit += 1;
-    this.submissions.push({ workflowId, nodeInfoList: structuredClone(nodeInfoList) });
+    this.submissions.push({ workflowId, nodeInfoList: structuredClone(nodeInfoList), instanceType: options.instanceType ?? "default" });
     if (this.scenario.submit instanceof Error) throw this.scenario.submit;
     return this.scenario.submit?.taskId ?? `mock-task-${this.calls.submit}`;
   }
