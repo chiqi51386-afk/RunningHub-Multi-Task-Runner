@@ -891,20 +891,53 @@ function optionParts(option: unknown) {
   return { label: String(option ?? ""), value: option };
 }
 
+type CreateMode = "digital-human" | "h3-multi-reference";
+
+const digitalHumanWorkflowIds = new Set([
+  "2100933451562491906",
+  "2101727071255941122",
+]);
+
+const h3MultiReferenceWorkflowIds = new Set([
+  "2093983063180054529",
+  "2101869007837089794",
+]);
+
+function createModeForWorkflow(workflow?: WorkflowView): CreateMode {
+  if (!workflow) return "digital-human";
+  if (h3MultiReferenceWorkflowIds.has(workflow.runningHubWorkflowId)) return "h3-multi-reference";
+  if (digitalHumanWorkflowIds.has(workflow.runningHubWorkflowId)) return "digital-human";
+  const context = `${workflow.name} ${workflow.functionDescription ?? ""} ${workflow.usageInstructions ?? ""}`.toLowerCase();
+  if (/minimax\s*[_-]?\s*h3|h3[^\n]*多参考|多参考[^\n]*h3/.test(context)) return "h3-multi-reference";
+  if (/数字人|对口型|infini|ltx|lip.?sync/.test(context)) return "digital-human";
+  if (workflow.parameters.some(parameter => parameter.valueType === "audio")) return "digital-human";
+  return "h3-multi-reference";
+}
+
 const CreateJob = memo(function CreateJob({ workflows, initialWorkflowId, initialDraft, onCreate }: { workflows: WorkflowView[]; initialWorkflowId?: string; initialDraft?: CreateJobDraft; onCreate: (drafts: CreateJobDraft[]) => Promise<boolean> }) {
   const initialWorkflow = workflows.find(workflow => workflow.id === initialWorkflowId) ?? workflows[0];
+  const initialMode = createModeForWorkflow(initialWorkflow);
+  const [activeMode, setActiveMode] = useState<CreateMode>(initialMode);
   const [draft, setDraft] = useState<CreateJobDraft>(() => initialDraft ? cloneDraft(initialDraft) : createDraft(initialWorkflow));
+  const modeDrafts = useRef<Partial<Record<CreateMode, CreateJobDraft>>>({ [initialMode]: initialDraft ? cloneDraft(initialDraft) : createDraft(initialWorkflow) });
   const [showGeneric, setShowGeneric] = useState(false);
   const [batch, setBatch] = useState<Array<{ id: string; draft: CreateJobDraft }>>([]);
   const [editingBatchId, setEditingBatchId] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
+  const modeWorkflows = useMemo(
+    () => workflows.filter(workflow => createModeForWorkflow(workflow) === activeMode),
+    [workflows, activeMode],
+  );
   useEffect(() => {
-    if (workflows.length && !workflows.some(workflow => workflow.id === draft.workflowId)) {
-      setDraft(createDraft(workflows[0]));
+    modeDrafts.current[activeMode] = cloneDraft(draft);
+  }, [activeMode, draft]);
+  useEffect(() => {
+    if (modeWorkflows.length && !modeWorkflows.some(workflow => workflow.id === draft.workflowId)) {
+      setDraft(createDraft(modeWorkflows[0]));
       setEditingBatchId(undefined);
     }
-  }, [workflows, draft.workflowId]);
-  const selected = workflows.find(w => w.id === draft.workflowId) ?? workflows[0];
+  }, [modeWorkflows, draft.workflowId]);
+  const selected = modeWorkflows.find(w => w.id === draft.workflowId) ?? modeWorkflows[0];
   const visibleParameters = selected?.parameters.filter(parameter => parameter.visible !== false) ?? [];
   const recognized = visibleParameters.filter(parameter => parameter.semanticType !== "unknown");
   const generic = visibleParameters.filter(parameter => parameter.semanticType === "unknown");
@@ -919,8 +952,22 @@ const CreateJob = memo(function CreateJob({ workflows, initialWorkflowId, initia
     .filter(isMediaParameter)
     .sort((left, right) => (mediaOrder[left.valueType] ?? 99) - (mediaOrder[right.valueType] ?? 99));
 
+  function switchCreateMode(nextMode: CreateMode) {
+    if (nextMode === activeMode) return;
+    modeDrafts.current[activeMode] = cloneDraft(draft);
+    const nextWorkflows = workflows.filter(workflow => createModeForWorkflow(workflow) === nextMode);
+    const savedDraft = modeDrafts.current[nextMode];
+    const nextDraft = savedDraft && nextWorkflows.some(workflow => workflow.id === savedDraft.workflowId)
+      ? cloneDraft(savedDraft)
+      : createDraft(nextWorkflows[0]);
+    setActiveMode(nextMode);
+    setDraft(nextDraft);
+    setShowGeneric(false);
+    setEditingBatchId(undefined);
+  }
+
   function chooseWorkflow(workflowId: string) {
-    const workflow = workflows.find(item => item.id === workflowId);
+    const workflow = modeWorkflows.find(item => item.id === workflowId);
     setDraft(createDraft(workflow));
     setShowGeneric(false);
   }
@@ -1010,6 +1057,11 @@ const CreateJob = memo(function CreateJob({ workflows, initialWorkflowId, initia
   function editBatchItem(id: string) {
     const item = batch.find(entry => entry.id === id);
     if (!item) return;
+    const workflow = workflows.find(entry => entry.id === item.draft.workflowId);
+    const itemMode = createModeForWorkflow(workflow);
+    modeDrafts.current[activeMode] = cloneDraft(draft);
+    modeDrafts.current[itemMode] = cloneDraft(item.draft);
+    setActiveMode(itemMode);
     setDraft(cloneDraft(item.draft));
     setEditingBatchId(id);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1027,11 +1079,19 @@ const CreateJob = memo(function CreateJob({ workflows, initialWorkflowId, initia
   }
 
   return <>
-    <PageHeading eyebrow="新建任务" title="创建任务" description="生成表单由当前 Workflow Profile 动态构建，切换工作流时参数会随之变化。" />
+    <PageHeading eyebrow="新建任务" title="创建任务" description="选择制作功能，再使用对应工作流创建任务。" />
+    <nav className="create-mode-tabs" aria-label="制作功能">
+      <button type="button" className={activeMode === "digital-human" ? "active" : ""} onClick={() => switchCreateMode("digital-human")} aria-pressed={activeMode === "digital-human"}>
+        <strong>数字人</strong><span>图片与音频驱动</span>
+      </button>
+      <button type="button" className={activeMode === "h3-multi-reference" ? "active" : ""} onClick={() => switchCreateMode("h3-multi-reference")} aria-pressed={activeMode === "h3-multi-reference"}>
+        <strong>H3 多参考</strong><span>生成词与多图参考</span>
+      </button>
+    </nav>
     {selected && (selected.functionDescription || selected.usageInstructions) && <div className="workflow-guide panel"><div><strong>功能说明</strong><p>{selected.functionDescription ?? "暂无说明"}</p></div><div><strong>使用说明</strong><p>{selected.usageInstructions ?? "暂无说明"}</p></div></div>}
     <div className="create-layout">
       <form className="panel form-panel" onSubmit={e => { e.preventDefault(); void submitDrafts([draft]); }}>
-        <div className="form-section"><div className="section-index">01</div><div className="section-content"><h2>选择工作流</h2><p>每个工作流使用自己的版本化 Profile，不共享固定字段。</p><label>工作流<select value={draft.workflowId} onChange={e => chooseWorkflow(e.target.value)}>{workflows.map(w => <option value={w.id} key={w.id}>{w.name}</option>)}</select><ChevronDown size={16} /></label><div className="profile-scan"><div><BadgeCheck size={17} /><span><strong>Profile v{selected?.profileVersion}</strong><small>已检测 {selected?.parameters.length ?? 0} 个参数</small></span></div><div className="scan-counts"><span>{recognized.length} 已识别</span><span>{media.length} 媒体</span><span className={generic.length ? "warn" : ""}>{generic.length} 待确认</span></div></div>{selected?.needsReview && <div className="profile-warning"><AlertTriangle size={17} /><span>该 Profile 含低置信度参数，请检查“其他参数”后再提交。</span></div>}</div></div>
+        <div className="form-section"><div className="section-index">01</div><div className="section-content"><h2>选择工作流</h2><p>{activeMode === "digital-human" ? "选择数字人工作流，填写人物图片、音频及工作流要求的内容。" : "选择 H3 多参考工作流，填写生成词、参考图片及生成参数。"}</p>{modeWorkflows.length ? <><label>工作流<select value={draft.workflowId} onChange={e => chooseWorkflow(e.target.value)}>{modeWorkflows.map(w => <option value={w.id} key={w.id}>{w.name}</option>)}</select><ChevronDown size={16} /></label><div className="profile-scan"><div><BadgeCheck size={17} /><span><strong>Profile v{selected?.profileVersion}</strong><small>已检测 {selected?.parameters.length ?? 0} 个参数</small></span></div><div className="scan-counts"><span>{recognized.length} 已识别</span><span>{media.length} 媒体</span><span className={generic.length ? "warn" : ""}>{generic.length} 待确认</span></div></div>{selected?.needsReview && <div className="profile-warning"><AlertTriangle size={17} /><span>该 Profile 含低置信度参数，请检查“其他参数”后再提交。</span></div>}</> : <div className="empty-parameters">当前功能下还没有可用工作流，请先到“工作流”页面导入。</div>}</div></div>
         {(prompts.length > 0 || media.length > 0) && <div className="form-section"><div className="section-index">02</div><div className="section-content"><div className="section-title-row media-section-title"><div><h2>媒体输入</h2><p>按生成词、图片、音频、视频排序；未上传的媒体会在提交时清空，避免误用工作流内置素材。</p></div>{media.length > 0 && <div className="bulk-media-actions"><button type="button" onClick={clearAllMedia}>清空全部媒体</button></div>}</div>{prompts.length > 0 && <div className="content-prompt-block"><div className="content-input-label"><span>生成词</span><div><small>优先输入</small><button type="button" onClick={clearPrompts}>清空生成词</button></div></div><div className="dynamic-grid prompt-input-grid">{prompts.map(parameter => <ParameterField key={parameter.id} parameter={parameter} value={draft.parameterValues[parameter.id]} onChange={value => setValue(parameter, value)} />)}</div></div>}{media.length > 0 && <div className="media-stack">{media.map((parameter, index) => { const mediaDraft = draft.mediaOverrides[parameter.id] ?? { enabled: false, mode: "clear" as const }; return <MediaField key={parameter.id} index={index + 1} parameter={parameter} draft={mediaDraft} onPick={window.runningHub ? () => void pickDesktopMedia(parameter) : undefined} onDrop={file => acceptDroppedMedia(parameter, file)} onMove={sourceId => moveImageMedia(sourceId, parameter)} onChange={(mode, file) => setMedia(parameter, mode, file)} />; })}</div>}</div></div>}
         <div className="form-section"><div className="section-index">03</div><div className="section-content"><h2>生成参数设置</h2><p>这里只显示时长、画面比例、分辨率、种子等设置，不再重复显示提示词和媒体文件。</p>{generationParameters.length > 0 ? <div className="dynamic-grid">{generationParameters.map(parameter => <ParameterField key={parameter.id} parameter={parameter} value={draft.parameterValues[parameter.id]} onChange={value => setValue(parameter, value)} />)}</div> : <div className="empty-parameters">这个工作流没有其他生成参数。</div>}</div></div>
         {generic.length > 0 && <div className="form-section generic-section"><div className="section-index">04</div><div className="section-content"><div className="section-title-row"><div><h2>其他参数</h2><p>未识别参数不会丢弃，仍按 nodeId.fieldName 原样进入 Job Snapshot。</p></div><button type="button" className="secondary small" onClick={() => setShowGeneric(value => !value)}>{showGeneric ? "收起" : `展开 ${generic.length} 项`}</button></div>{showGeneric && <div className="dynamic-grid generic-grid">{generic.map(parameter => <ParameterField key={parameter.id} parameter={parameter} value={draft.parameterValues[parameter.id]} onChange={value => setValue(parameter, value)} />)}</div>}</div></div>}

@@ -173,6 +173,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .workflow-health > span.ready { background: var(--green); box-shadow: 0 0 0 4px rgba(86, 215, 160, .07); }
 .workflow-health > span.review { background: var(--amber); box-shadow: 0 0 0 4px rgba(242, 184, 93, .07); }
 
+.create-mode-tabs { display: flex; align-items: stretch; gap: 8px; margin: -8px 0 16px; padding: 5px; width: fit-content; border: 1px solid var(--line-soft); border-radius: 12px; background: #0c1118; }
+.create-mode-tabs button { min-width: 180px; padding: 10px 16px; border: 1px solid transparent; border-radius: 8px; display: flex; align-items: baseline; gap: 9px; color: #7d899b; background: transparent; cursor: pointer; text-align: left; transition: .16s ease; }
+.create-mode-tabs button:hover { color: #cbd5e5; background: #121923; }
+.create-mode-tabs button.active { color: #f2f6fd; border-color: rgba(94, 140, 255, .32); background: linear-gradient(180deg, rgba(94, 140, 255, .22), rgba(94, 140, 255, .1)); box-shadow: inset 0 -2px #668fff; }
+.create-mode-tabs strong { font-size: 14px; }
+.create-mode-tabs span { color: #71809a; font-size: 11px; font-weight: 500; }
+.create-mode-tabs button.active span { color: #9eb5ec; }
+
 .create-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 13px; align-items: start; }
 .form-panel { overflow: hidden; }
 .form-section { display: grid; grid-template-columns: 50px minmax(0, 1fr); gap: 15px; padding: 23px; border-bottom: 1px solid var(--line-soft); }
@@ -511,6 +519,9 @@ label small.field-error { color: #e8878f; }
 }
 
 @media (max-width: 760px) {
+  .create-mode-tabs { width: 100%; }
+  .create-mode-tabs button { min-width: 0; flex: 1; justify-content: center; }
+  .create-mode-tabs span { display: none; }
   .workflow-guide { grid-template-columns: 1fr; }
   .media-control-editor { grid-template-columns: 1fr; align-items: stretch; }
   .app-shell { display: block; }

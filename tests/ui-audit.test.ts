@@ -52,6 +52,19 @@ test("Plus is a task-level switch and remains visible in batch and job views", a
   assert.doesNotMatch(client, /instanceType:\s*"default"/);
 });
 
+test("create page exposes VideoKit-style peer modes while keeping the existing task form", async () => {
+  const app = await readFile(path.join(root, "frontend/src/App.tsx"), "utf8");
+  const css = await readFile(path.join(root, "frontend/src/styles.css"), "utf8");
+  assert.match(app, /className="create-mode-tabs"/);
+  assert.match(app, />数字人</);
+  assert.match(app, />H3 多参考</);
+  assert.match(app, /modeDrafts\.current\[activeMode\] = cloneDraft\(draft\)/);
+  assert.match(app, /const modeWorkflows = useMemo\([\s\S]*?workflows\.filter/);
+  assert.match(app, /h3MultiReferenceWorkflowIds\.has\(workflow\.runningHubWorkflowId\)/);
+  assert.match(css, /\.create-mode-tabs button\.active/);
+  assert.match(app, /<div className="instance-mode-control">[\s\S]*?<strong>Plus 高显存<\/strong>/);
+});
+
 test("source desktop reports the application package version instead of Electron's runtime version", async () => {
   const desktop = await readFile(path.join(root, "src/desktop/main.ts"), "utf8");
   assert.match(desktop, /async function resolveApplicationVersion/);
