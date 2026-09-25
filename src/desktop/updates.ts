@@ -61,13 +61,19 @@ export function isNewerVersion(latest: string, current: string): boolean {
   return false;
 }
 
-export function parseLatestRelease(payload: unknown, currentVersion: string): UpdateInfo {
+/** Release asset suffix for the running platform, e.g. `windows-x64` or `mac-arm64`. */
+export function updateAssetPlatform(platform: NodeJS.Platform = process.platform, arch: string = process.arch): string {
+  return platform === "darwin" ? `mac-${arch}` : `windows-${arch}`;
+}
+
+export function parseLatestRelease(payload: unknown, currentVersion: string, assetPlatform = updateAssetPlatform()): UpdateInfo {
   if (!payload || typeof payload !== "object") throw new Error("GitHub 返回的更新信息格式无效。");
   const release = payload as GithubReleasePayload;
   const latestVersion = typeof release.tag_name === "string" ? release.tag_name.replace(/^v/i, "") : "";
   if (!versionParts(latestVersion).length) throw new Error("最新 Release 缺少有效版本号。");
   const assets = Array.isArray(release.assets) ? release.assets as GithubReleaseAsset[] : [];
-  const asset = assets.find(item => typeof item.name === "string" && /^RunningHub-Runner-v[\d.]+-windows-x64\.zip$/i.test(item.name));
+  const assetPattern = new RegExp(`^RunningHub-Runner-v[\\d.]+-${assetPlatform}\\.zip$`, "i");
+  const asset = assets.find(item => typeof item.name === "string" && assetPattern.test(item.name));
   return {
     currentVersion,
     latestVersion,

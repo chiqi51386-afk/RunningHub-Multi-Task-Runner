@@ -1,16 +1,16 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { constants as fsConstants, createWriteStream } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { access, appendFile, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, appendFile, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { RunningHubBackend } from "../core/index.js";
 import { InMemorySecretStore, PlainTextSecretStore } from "../core/secretStore.js";
 import type { Account, CreateJobInput, Job, WorkflowProfile, WorkflowRecord } from "../core/types.js";
-import { latestReleaseApiUrls, latestReleaseUrl, parseLatestRelease, trustedUpdateAssetPrefixes, updateRepositoryUrl } from "./updates.js";
+import { latestReleaseApiUrls, latestReleaseUrl, parseLatestRelease, trustedUpdateAssetPrefixes, updateAssetPlatform, updateRepositoryUrl } from "./updates.js";
 import type { UpdateInfo, UpdateProgress } from "./updates.js";
 
 interface RendererDraft {
@@ -72,9 +72,20 @@ function runPowerShell(args: string[]): Promise<void> {
   });
 }
 
+function runProcess(command: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let errorOutput = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", chunk => { errorOutput = `${errorOutput}${String(chunk)}`.slice(-4000); });
+    child.once("error", reject);
+    child.once("exit", code => code === 0 ? resolve() : reject(new Error(errorOutput.trim() || `${command} 执行失败（退出码 ${code ?? "未知"}）。`)));
+  });
+}
+
 function validateUpdateAsset(info: UpdateInfo): asserts info is UpdateInfo & Required<Pick<UpdateInfo, "assetName" | "assetUrl" | "assetDigest">> {
   if (!info.updateAvailable) throw new Error("当前已经是最新版本。");
-  if (!info.assetName || !info.assetUrl) throw new Error("最新版本缺少 Windows x64 更新包，请稍后重试或打开项目主页。");
+  if (!info.assetName || !info.assetUrl) throw new Error(`最新版本缺少 ${updateAssetPlatform()} 更新包，请稍后重试或打开项目主页手动下载。`);
   if (!/^sha256:[a-f\d]{64}$/i.test(info.assetDigest ?? "")) throw new Error("更新包缺少 GitHub SHA-256 摘要，为安全起见已停止自动更新。");
   const assetUrl = new URL(info.assetUrl);
   if (assetUrl.protocol !== "https:" || assetUrl.hostname !== "github.com" ||
@@ -83,9 +94,92 @@ function validateUpdateAsset(info: UpdateInfo): asserts info is UpdateInfo & Req
   }
 }
 
+async function stageWindowsUpdate(updateRoot: string, stagingDir: string, archivePath: string): Promise<void> {
+  const extractorPath = path.join(updateRoot, "extract-update.ps1");
+  await writeFile(extractorPath, String.raw`param(
+  [Parameter(Mandatory=$true)][string]$ArchivePath,
+  [Parameter(Mandatory=$true)][string]$DestinationPath
+)
+$ErrorActionPreference = "Stop"
+Expand-Archive -LiteralPath $ArchivePath -DestinationPath $DestinationPath -Force
+`, "utf8");
+  try {
+    await runPowerShell(["-File", extractorPath, "-ArchivePath", archivePath, "-DestinationPath", stagingDir]);
+  } finally {
+    await rm(extractorPath, { force: true });
+  }
+  const executableName = path.basename(process.execPath);
+  await access(path.join(stagingDir, executableName)).catch(() => { throw new Error("更新包结构无效：找不到应用程序文件。"); });
+
+  const updaterPath = path.join(updateRoot, "apply-update.ps1");
+  const installDir = path.dirname(process.execPath);
+  const updaterScript = String.raw`param(
+  [Parameter(Mandatory=$true)][int]$ParentProcessId,
+  [Parameter(Mandatory=$true)][string]$SourceDir,
+  [Parameter(Mandatory=$true)][string]$TargetDir,
+  [Parameter(Mandatory=$true)][string]$ExecutablePath,
+  [Parameter(Mandatory=$true)][string]$ArchivePath
+)
+$ErrorActionPreference = "Stop"
+Wait-Process -Id $ParentProcessId -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
+& robocopy.exe $SourceDir $TargetDir /E /COPY:DAT /DCOPY:DAT /R:5 /W:1 /NFL /NDL /NJH /NJS /NP
+$copyExitCode = $LASTEXITCODE
+if ($copyExitCode -gt 7) { throw "更新文件替换失败，Robocopy 退出码：$copyExitCode" }
+Remove-Item -LiteralPath $SourceDir -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+Start-Process -FilePath $ExecutablePath -WorkingDirectory $TargetDir
+Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+`;
+  await writeFile(updaterPath, updaterScript, "utf8");
+  const updater = spawn("powershell.exe", [
+    "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", updaterPath,
+    "-ParentProcessId", String(process.pid), "-SourceDir", stagingDir, "-TargetDir", installDir,
+    "-ExecutablePath", process.execPath, "-ArchivePath", archivePath,
+  ], { detached: true, windowsHide: true, stdio: "ignore" });
+  updater.unref();
+}
+
+/** The running app bundle, e.g. `/Applications/RunningHub Runner.app`. */
+function currentMacBundle(): string {
+  return path.resolve(process.execPath, "..", "..", "..");
+}
+
+async function stageMacUpdate(updateRoot: string, stagingDir: string, archivePath: string): Promise<void> {
+  // ditto preserves the bundle's symlinks, permissions and code signature; `unzip` does not.
+  await runProcess("/usr/bin/ditto", ["-x", "-k", archivePath, stagingDir]);
+  const bundleName = (await readdir(stagingDir)).find(name => name.endsWith(".app"));
+  if (!bundleName) throw new Error("更新包结构无效：找不到 .app 应用程序。");
+  const newBundle = path.join(stagingDir, bundleName);
+  await access(path.join(newBundle, "Contents", "MacOS", path.basename(process.execPath)))
+    .catch(() => { throw new Error("更新包结构无效：找不到应用程序文件。"); });
+  const targetBundle = currentMacBundle();
+  await access(path.dirname(targetBundle), fsConstants.W_OK)
+    .catch(() => { throw new Error(`没有权限替换 ${targetBundle}，请手动下载新版本并拖入“应用程序”文件夹。`); });
+
+  const updaterPath = path.join(updateRoot, "apply-update.sh");
+  await writeFile(updaterPath, `#!/bin/bash
+PARENT_PID="$1"; SOURCE="$2"; TARGET="$3"; UPDATE_ROOT="$4"
+while kill -0 "$PARENT_PID" 2>/dev/null; do sleep 0.2; done
+sleep 0.5
+BACKUP="$TARGET.update-backup"
+rm -rf "$BACKUP"
+if mv "$TARGET" "$BACKUP" && mv "$SOURCE" "$TARGET"; then
+  rm -rf "$BACKUP"
+else
+  [ -d "$BACKUP" ] && [ ! -d "$TARGET" ] && mv "$BACKUP" "$TARGET"
+fi
+xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null
+open "$TARGET"
+rm -rf "$UPDATE_ROOT"
+`, { encoding: "utf8", mode: 0o755 });
+  const updater = spawn("/bin/bash", [updaterPath, String(process.pid), newBundle, targetBundle, updateRoot], { detached: true, stdio: "ignore" });
+  updater.unref();
+}
+
 async function downloadAndInstallUpdate(): Promise<{ started: true }> {
   if (updateInProgress) throw new Error("更新正在进行，请勿重复操作。");
-  if (process.platform !== "win32" || !app.isPackaged) throw new Error("自动更新仅支持已打包的 Windows 应用。");
+  if (!["win32", "darwin"].includes(process.platform) || !app.isPackaged) throw new Error("自动更新仅支持已打包的 Windows / macOS 应用。");
   updateInProgress = true;
   try {
     const info = await checkForUpdate();
@@ -132,49 +226,8 @@ async function downloadAndInstallUpdate(): Promise<{ started: true }> {
 
     sendUpdateProgress({ stage: "extracting", percent: 100, message: "正在解压并准备更新…" });
     await mkdir(stagingDir, { recursive: true });
-    const extractorPath = path.join(updateRoot, "extract-update.ps1");
-    await writeFile(extractorPath, String.raw`param(
-  [Parameter(Mandatory=$true)][string]$ArchivePath,
-  [Parameter(Mandatory=$true)][string]$DestinationPath
-)
-$ErrorActionPreference = "Stop"
-Expand-Archive -LiteralPath $ArchivePath -DestinationPath $DestinationPath -Force
-`, "utf8");
-    try {
-      await runPowerShell(["-File", extractorPath, "-ArchivePath", archivePath, "-DestinationPath", stagingDir]);
-    } finally {
-      await rm(extractorPath, { force: true });
-    }
-    const executableName = path.basename(process.execPath);
-    await access(path.join(stagingDir, executableName)).catch(() => { throw new Error("更新包结构无效：找不到应用程序文件。"); });
-
-    const updaterPath = path.join(updateRoot, "apply-update.ps1");
-    const installDir = path.dirname(process.execPath);
-    const updaterScript = String.raw`param(
-  [Parameter(Mandatory=$true)][int]$ParentProcessId,
-  [Parameter(Mandatory=$true)][string]$SourceDir,
-  [Parameter(Mandatory=$true)][string]$TargetDir,
-  [Parameter(Mandatory=$true)][string]$ExecutablePath,
-  [Parameter(Mandatory=$true)][string]$ArchivePath
-)
-$ErrorActionPreference = "Stop"
-Wait-Process -Id $ParentProcessId -ErrorAction SilentlyContinue
-Start-Sleep -Milliseconds 500
-& robocopy.exe $SourceDir $TargetDir /E /COPY:DAT /DCOPY:DAT /R:5 /W:1 /NFL /NDL /NJH /NJS /NP
-$copyExitCode = $LASTEXITCODE
-if ($copyExitCode -gt 7) { throw "更新文件替换失败，Robocopy 退出码：$copyExitCode" }
-Remove-Item -LiteralPath $SourceDir -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
-Start-Process -FilePath $ExecutablePath -WorkingDirectory $TargetDir
-Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
-`;
-    await writeFile(updaterPath, updaterScript, "utf8");
-    const updater = spawn("powershell.exe", [
-      "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", updaterPath,
-      "-ParentProcessId", String(process.pid), "-SourceDir", stagingDir, "-TargetDir", installDir,
-      "-ExecutablePath", process.execPath, "-ArchivePath", archivePath,
-    ], { detached: true, windowsHide: true, stdio: "ignore" });
-    updater.unref();
+    if (process.platform === "darwin") await stageMacUpdate(updateRoot, stagingDir, archivePath);
+    else await stageWindowsUpdate(updateRoot, stagingDir, archivePath);
     sendUpdateProgress({ stage: "restarting", percent: 100, message: "更新已准备完成，正在重启…" });
     setTimeout(() => app.quit(), 300);
     return { started: true };
@@ -512,6 +565,12 @@ app.on("second-instance", () => {
 });
 
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
+// macOS keeps the app (and its job scheduler) running after the window closes;
+// clicking the Dock icon must bring the window back.
+app.on("activate", () => {
+  if (!backend || !mainWindow?.isDestroyed()) return;
+  void createWindow().then(window => { mainWindow = window; });
+});
 app.on("before-quit", event => {
   if (!backend) return;
   event.preventDefault();
