@@ -30,6 +30,7 @@
     "desktop:start": "npm run desktop:build && npm run desktop:launch",
     "desktop:smoke": "npm run desktop:build && npm run native:electron && electron dist/src/desktop/main.js --smoke",
     "release:win": "npm run desktop:build && npm run native:electron && electron-builder --win dir --x64 && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.ps1",
+    "release:mac": "npm run desktop:build && npm run native:electron && electron-builder --mac --x64 --arm64",
     "licenses:generate": "node scripts/generate-third-party-licenses.mjs",
     "licenses:check": "node scripts/generate-third-party-licenses.mjs --check",
     "package:verify": "node scripts/verify-package-boundaries.mjs"
@@ -76,6 +77,20 @@
           ]
         }
       ]
+    },
+    "afterPack": "scripts/mac-adhoc-sign.cjs",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "hardenedRuntime": false,
+      "target": [
+        "zip",
+        "dmg"
+      ],
+      "artifactName": "RunningHub-Runner-v${version}-mac-${arch}.${ext}"
+    },
+    "dmg": {
+      "artifactName": "RunningHub-Runner-v${version}-mac-${arch}.${ext}"
     }
   }
 }

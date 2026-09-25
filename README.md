@@ -1,6 +1,6 @@
 # RunningHub Multi-Task Runner
 
-一个面向 RunningHub 海外站的 Windows 桌面客户端，用来管理多个工作流、账号和生成任务。当前版本：**v0.1.8**。
+一个面向 RunningHub 海外站的 Windows / macOS 桌面客户端，用来管理多个工作流、账号和生成任务。当前版本：**v0.1.8**。
 
 ## 主要功能
 
@@ -21,6 +21,20 @@
 5. 添加 RunningHub API Key，导入或选择工作流，然后创建任务。
 
 当前应用没有代码签名。Windows 第一次运行时如果出现安全提示，请先核对下载来源确实是本仓库。
+
+## 直接使用 macOS 版
+
+1. 按芯片下载：Apple 芯片（M1/M2/M3…）选 `RunningHub-Runner-v版本-mac-arm64.dmg`，Intel 芯片选 `...-mac-x64.dmg`。
+2. 打开 DMG，把 `RunningHub Runner` 拖进“应用程序”文件夹。
+3. 应用没有 Apple 开发者签名，首次打开会被拦截：在“应用程序”中右键应用 →“打开”，或在“系统设置 → 隐私与安全性”中点“仍要打开”。也可以在终端执行：
+
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/RunningHub Runner.app"
+   ```
+
+4. 数据位于 `~/Library/Application Support/RunningHub Runner/`，默认下载目录为其中的 `downloads`。
+5. 关闭窗口后应用和任务调度仍在后台运行，点 Dock 图标可重新打开窗口；用 ⌘Q 完全退出。
+6. “设置 → 检查更新”在 Release 提供对应的 `mac-arm64` / `mac-x64` 压缩包时可自动更新；否则请手动下载。
 
 ## 内置工作流
 
@@ -67,6 +81,14 @@ npm run typecheck
 npm test
 npm run frontend:typecheck
 npm run desktop:smoke
+```
+
+macOS 也可以直接双击仓库根目录的 `Start RunningHub Runner.command`（首次会自动安装依赖并构建）。
+
+制作 macOS 安装包（在 Mac 上执行，同时输出 x64 与 arm64 的 `.dmg` / `.zip`）：
+
+```bash
+npm run release:mac
 ```
 
 制作 Windows x64 可执行压缩包：
