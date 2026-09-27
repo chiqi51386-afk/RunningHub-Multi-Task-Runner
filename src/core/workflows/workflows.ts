@@ -9,6 +9,14 @@ import { createWorkflowProfile, repairLowConfidenceSemantics, validateProfile, v
 export class Workflows {
   constructor(private readonly db: CoreDatabase, private readonly events: BackendEvents) {}
 
+  isBundled(id: string): boolean {
+    return this.db.isBundledWorkflow(id);
+  }
+
+  private requirePersonal(id: string): void {
+    if (this.isBundled(id)) throw new Error("默认工作流由软件版本管理，不能修改或删除；请导出后导入为个人工作流。");
+  }
+
   importApiJson(input: {
     id?: string;
     name: string;
@@ -16,9 +24,11 @@ export class Workflows {
     sourceUrl?: string;
     workflow: unknown;
   }): WorkflowRecord {
+    if (input.id) this.requirePersonal(input.id);
     const parsed = parseApiWorkflow(input.workflow);
     const existing = input.id ? this.db.getWorkflow(input.id) : undefined;
-    const sameGraph = this.db.findWorkflowByHash(parsed.workflowHash);
+    const candidate = this.db.findWorkflowByHash(parsed.workflowHash);
+    const sameGraph = candidate && !this.isBundled(candidate.id) ? candidate : undefined;
     if (!existing && sameGraph && sameGraph.runningHubWorkflowId !== input.runningHubWorkflowId.trim()) {
       throw new Error(`这份 API JSON 已关联 Workflow ID ${sameGraph.runningHubWorkflowId}，不能直接绑定到 ${input.runningHubWorkflowId.trim()}。请从目标 RunningHub 工作流重新导出 API JSON。`);
     }
@@ -55,7 +65,7 @@ export class Workflows {
     const workflow = this.db.getWorkflow(id);
     return workflow ? this.refreshDerivedMetadata(workflow) : undefined;
   }
-  remove(id: string): boolean { return this.db.removeWorkflow(id); }
+  remove(id: string): boolean { this.requirePersonal(id); return this.db.removeWorkflow(id); }
 
   exportPortablePackage(id: string, applicationVersion?: string): PortableWorkflowPackage {
     const workflow = this.db.getWorkflow(id);
@@ -66,7 +76,7 @@ export class Workflows {
   importPortablePackage(value: unknown): WorkflowRecord {
     const portable = parsePortableWorkflowPackage(value);
     const existing = this.db.listWorkflows().find(workflow =>
-      workflow.runningHubWorkflowId === portable.workflow.runningHubWorkflowId,
+      workflow.runningHubWorkflowId === portable.workflow.runningHubWorkflowId && !this.isBundled(workflow.id),
     );
     const now = Date.now();
     const id = existing?.id ?? randomUUID();
@@ -90,6 +100,7 @@ export class Workflows {
   }
 
   updateProfile(id: string, profile: WorkflowProfile, metadata?: { name?: string; runningHubWorkflowId?: string; sourceUrl?: string }): WorkflowRecord {
+    this.requirePersonal(id);
     const workflow = this.db.getWorkflow(id);
     if (!workflow) throw new Error(`Workflow not found: ${id}`);
     const now = Date.now();
@@ -117,13 +128,22 @@ export class Workflows {
   }
 
   private refreshDerivedMetadata(workflow: WorkflowRecord): WorkflowRecord {
+    if (this.isBundled(workflow.id)) return workflow;
     const parsedParameters = parseApiWorkflow(workflow.raw).parameters;
     const detected = new Map(parsedParameters.map(parameter => [parameter.key, parameter]));
     let changed = false;
     let parameters = workflow.profile.parameters.map(parameter => {
       const schema = detected.get(parameter.key);
+      if (parameter.mediaControl?.detected) {
+        const control = workflow.profile.parameters.find(item => item.id === parameter.mediaControl?.parameterId);
+        if (control?.nodeId !== parameter.nodeId) { changed = true; parameter = { ...parameter, mediaControl: undefined }; }
+      }
+      if (parameter.referenceIndex !== schema?.referenceIndex || parameter.mappingIssue !== schema?.mappingIssue) {
+        changed = true;
+        parameter = { ...parameter, referenceIndex: schema?.referenceIndex, mappingIssue: schema?.mappingIssue };
+      }
       if (schema?.classType === "ResolutionSelector" && schema.fieldName === "aspect_ratio" &&
-        (parameter.defaultValue !== schema.defaultValue || !parameter.submitDefault || parameter.valueType !== "select")) {
+        (parameter.semanticType !== "aspect_ratio" || parameter.defaultValue !== schema.defaultValue || !parameter.submitDefault || parameter.valueType !== "select")) {
         changed = true;
         return { ...parameter, semanticType: "aspect_ratio" as const, valueType: "select" as const,
           defaultValue: schema.defaultValue, submitDefault: true, options: schema.options, confidence: 1 };

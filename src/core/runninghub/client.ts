@@ -108,7 +108,7 @@ export class RunningHubClient {
     if (Number(data.code) !== 0) throw this.apiError(data, "upload", undefined, "Upload failed");
     const value = extractUploadValue(data);
     if (!value) {
-      throw new RunningHubError("Upload succeeded without data.fileName, data.filename, or data.download_url", {
+      throw new RunningHubError("上传响应缺少 fileName/filename，不能将下载网址填入媒体节点", {
         code: "UPLOAD_FAILED", message: "Upload response is missing a reusable media value", phase: "upload",
         retryable: false, accountRelated: false, safeToReassign: false, raw: data,
       });
@@ -298,7 +298,9 @@ export async function downloadFile(
         throw new RunningHubError(detail.message, detail);
       }
       await mkdir(path.dirname(destination), { recursive: true });
-      await pipeline(Readable.fromWeb(response.body as never), createWriteStream(temp));
+      requestSignal.throwIfAborted();
+      await pipeline(Readable.fromWeb(response.body as never), createWriteStream(temp), { signal: requestSignal });
+      requestSignal.throwIfAborted();
       await rename(temp, destination);
       return destination;
     } catch (error) {

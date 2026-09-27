@@ -92,6 +92,8 @@ export type WorkflowSemanticType =
   | "resolution"
   | "resolution_multiple"
   | "upscale_factor"
+  | "target_resolution"
+  | "lowres_scale"
   | "seed"
   | "steps"
   | "cfg"
@@ -122,6 +124,8 @@ export interface WorkflowParameter {
   visible?: boolean;
   label?: string;
   displayOrder?: number;
+  referenceIndex?: number;
+  mappingIssue?: string;
 }
 
 export interface MediaControlBinding {
@@ -137,6 +141,9 @@ export interface WorkflowProfileParameter extends WorkflowParameter {
 }
 
 export interface WorkflowProfile {
+  downloadNamingRule?: import("./downloads/naming.js").NamingRule;
+  downloadIdentity?: { task: number; group?: number; date: string };
+  production?: { groupId: string; segmentIndex: number };
   version: number;
   workflowId: string;
   name: string;
@@ -311,6 +318,7 @@ export interface JobResult {
 }
 
 export interface Job extends JobSnapshot {
+  submission?: { recordedAt: number; workflowId: string; nodeInfoList: NodeInfo[]; instanceType?: "plus" };
   accountId?: string;
   remoteTaskId?: string;
   status: JobStatus;
@@ -328,6 +336,8 @@ export interface Job extends JobSnapshot {
 }
 
 export interface CreateJobInput {
+  production?: { groupId: string; segmentIndex: number };
+  namingRule?: import("./downloads/naming.js").NamingRule;
   workflowId: string;
   parameters: Record<string, unknown>;
   media?: JobMedia[];

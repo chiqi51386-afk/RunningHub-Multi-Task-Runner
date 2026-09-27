@@ -1,4 +1,5 @@
 import type { CoreDatabase } from "../database.js";
+import { randomUUID } from "node:crypto";
 import type { BackendEvents } from "../events.js";
 import type { CreateJobInput, Job, JobStatus } from "../types.js";
 
@@ -31,6 +32,44 @@ export class Jobs {
   constructor(private readonly db: CoreDatabase, private readonly events: BackendEvents) {}
 
   create(input: CreateJobInput): Job {
+    const job = this.insert(input.production ? { ...input, production: { ...input.production, groupId: randomUUID() } } : input);
+    this.emit(job);
+    return job;
+  }
+
+  createBatch(inputs: CreateJobInput[]): Job[] {
+    if (!inputs.length || inputs.length > 500) throw new Error("批次任务数量必须为 1–500。");
+    const groups = new Map<string, string>();
+    const segments = new Set<string>();
+    inputs = inputs.map(input => {
+      if (!input.production) return input;
+      const key = input.production.groupId;
+      const segmentKey = `${key}:${input.production.segmentIndex}`;
+      if (segments.has(segmentKey)) throw new Error("同一制作组的段号重复，请重新加入制作批次");
+      segments.add(segmentKey);
+      if (typeof key !== "string" || !key.length || key.length > 100) throw new Error("制作批次标识无效");
+      if (!groups.has(key)) groups.set(key, randomUUID());
+      return { ...input, production: { ...input.production, groupId: groups.get(key)! } };
+    });
+    const jobs = this.db.transaction(() => inputs.map((input, index) => {
+      try { return this.insert(input); }
+      catch (error) {
+        throw new Error(`批次第 ${index + 1} 项创建失败，整批未提交：${error instanceof Error ? error.message : "数据写入失败"}`);
+      }
+    }));
+    // Publish only after commit. Notification failure must not turn a committed
+    // batch into a rejected request, which would invite duplicate submissions.
+    for (const job of jobs) {
+      try { this.events.emit("job.updated", job); }
+      catch { console.error("Batch committed; job notification failed", job.id); }
+    }
+    try { this.events.emit("queue.updated", this.db.pendingCount()); }
+    catch { console.error("Batch committed; queue notification failed"); }
+    return jobs;
+  }
+
+  private insert(input: CreateJobInput): Job {
+    if (input.production && (!Number.isInteger(input.production.segmentIndex) || input.production.segmentIndex < 1 || input.production.segmentIndex > 9999)) throw new Error("段落编号无效");
     const workflow = this.db.getWorkflow(input.workflowId);
     if (!workflow) throw new Error(`Workflow not found: ${input.workflowId}`);
     const validIds = new Set(workflow.profile.parameters.map(parameter => parameter.id));
@@ -38,7 +77,6 @@ export class Jobs {
       if (!validIds.has(key)) throw new Error(`Unknown workflow parameter: ${key}`);
     }
     const job = this.db.createJob(input, workflow);
-    this.emit(job);
     return job;
   }
 

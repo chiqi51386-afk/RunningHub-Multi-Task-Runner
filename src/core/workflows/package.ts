@@ -116,8 +116,9 @@ export function materializePortableProfile(
   const detected = new Map(parseApiWorkflow(value.workflow.apiJson).parameters.map(parameter => [parameter.key, parameter]));
   const parameters = repairLowConfidenceSemantics(structuredClone(value.profile.parameters)).map(parameter => {
     const schema = detected.get(parameter.key);
+    parameter = { ...parameter, referenceIndex: schema?.referenceIndex, mappingIssue: schema?.mappingIssue };
     return schema?.classType === "ResolutionSelector" && schema.fieldName === "aspect_ratio"
-      ? { ...parameter, semanticType: schema.semanticType, valueType: schema.valueType, defaultValue: schema.defaultValue,
+      ? { ...parameter, semanticType: "aspect_ratio" as const, valueType: "select" as const, defaultValue: schema.defaultValue,
           submitDefault: schema.submitDefault, options: schema.options, confidence: 1 }
       : parameter;
   });

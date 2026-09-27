@@ -11,8 +11,8 @@ const outputDirectory = path.resolve(process.argv[3] ?? "bundled-workflows");
 if (!databasePath) throw new Error("Usage: node scripts/prepare-release-data.mjs <database-path> [output-directory]");
 
 const expected = new Map([
-  ["2093983063180054529", "minimax-h3-multi-reference.rhworkflow.json"],
-  ["2101869007837089794", "minimax-h3-chinese-prompt.rhworkflow.json"],
+  ["2104088262948556801", "minimax-h3-multi-reference.rhworkflow.json"],
+  ["2104087390590894081", "minimax-h3-selflift.rhworkflow.json"],
   ["2100933451562491906", "infinitetalk-digital-human.rhworkflow.json"],
   ["2101727071255941122", "ltx-2.3-digital-human.rhworkflow.json"],
 ]);

@@ -63,7 +63,7 @@ function bindMediaControls(parameters: WorkflowProfileParameter[]): void {
     const mediaType = media.valueType;
     const mediaContext = normalize(`${media.fieldName} ${media.classType} ${media.nodeTitle ?? ""}`);
     const mediaNumber = mediaContext.match(/\d+/)?.[0];
-    const candidates = switches.map(parameter => {
+    const candidates = switches.filter(parameter => parameter.nodeId === media.nodeId).map(parameter => {
       const field = normalize(parameter.fieldName);
       const context = normalize(`${parameter.fieldName} ${parameter.classType} ${parameter.nodeTitle ?? ""}`);
       const isSwitch = /enable|enabled|use|active|upload|switch|toggle|启用|开启|使用|上传/.test(context);

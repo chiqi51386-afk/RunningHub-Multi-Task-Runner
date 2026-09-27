@@ -34,6 +34,9 @@ jobs:
         run: |
           $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
           $releaseTag = "v$version"
+          if ("${{ github.ref }}" -ne "refs/tags/$releaseTag") {
+            throw "发布必须从对应版本标签触发：refs/tags/$releaseTag"
+          }
           if ("${{ github.event_name }}" -eq "push" -and "${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne $releaseTag) {
             throw "标签 ${{ github.ref_name }} 与 package.json 版本 $releaseTag 不一致。"
           }

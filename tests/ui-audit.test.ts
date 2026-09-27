@@ -4,9 +4,12 @@ import path from "node:path";
 import test from "node:test";
 
 const root = process.cwd();
+async function readFrontend() {
+  return (await Promise.all(["App.tsx", "CreateTask.tsx", "ProductionBatchPanel.tsx", "MediaFields.tsx", "workflow-view.ts"].map(file => readFile(path.join(root, "frontend/src", file), "utf8")))).join("\\n");
+}
 
 test("job UI exposes structured errors, text outputs, stage progress, and download cancellation", async () => {
-  const app = await readFile(path.join(root, "frontend/src/App.tsx"), "utf8");
+  const app = await readFrontend();
   const desktop = await readFile(path.join(root, "src/desktop/main.ts"), "utf8");
   assert.match(app, /查看错误详情/);
   assert.match(app, /文本输出/);
@@ -26,7 +29,7 @@ test("create page keeps its batch panel sticky only on desktop and prompt previe
 });
 
 test("workflow editor keeps Workflow ID read-only and parameter renderer avoids empty select", async () => {
-  const app = await readFile(path.join(root, "frontend/src/App.tsx"), "utf8");
+  const app = await readFrontend();
   assert.match(app, /Workflow ID<input[^>]*readOnly/);
   assert.match(app, /parameter\.valueType === "select" && parameter\.options\?\.length/);
   assert.match(app, /parameter\.valueType === "json"/);
@@ -35,17 +38,18 @@ test("workflow editor keeps Workflow ID read-only and parameter renderer avoids 
 
 test("desktop freezes the configured download directory into every new job", async () => {
   const desktop = await readFile(path.join(root, "src/desktop/main.ts"), "utf8");
-  assert.match(desktop, /return \{ workflowId: draft\.workflowId, parameters, media, instanceType: draft\.instanceType === "plus" \? "plus" : "default", outputDir \}/);
-  assert.match(desktop, /const outputDir = desktopSettings\.outputDir \?\? defaultOutputDir/);
+  assert.match(desktop, /const resolved = resolveMediaInputs\(workflow\.profile, parameters, draft\.mediaOverrides \?\? \{\}\)/);
+  assert.match(desktop, /return \{ workflowId: draft\.workflowId, \.\.\.resolved, production: draft\.production, instanceType: draft\.instanceType === "plus" \? "plus" : "default", outputDir \}/);
+  assert.match(desktop, /const outputDir = settings\.outputDir \?\? defaultOutputDir/);
   assert.match(desktop, /const settings = await readDesktopSettings\(\)/);
   assert.match(desktop, /const outputDir = await currentOutputDir\(\)/);
 });
 
 test("Plus is a task-level switch and remains visible in batch and job views", async () => {
-  const app = await readFile(path.join(root, "frontend/src/App.tsx"), "utf8");
+  const app = await readFrontend();
   const client = await readFile(path.join(root, "src/core/runninghub/client.ts"), "utf8");
   assert.match(app, /Plus 高显存/);
-  assert.match(app, /48GB 实例，费用可能更高/);
+  assert.match(app, /aria-label="开启 Plus 高显存实例"/);
   assert.match(app, /item\.draft\.instanceType === "plus"/);
   assert.match(app, /job\.instanceType === "plus"/);
   assert.match(client, /payload\.instanceType = "plus"/);
@@ -53,12 +57,14 @@ test("Plus is a task-level switch and remains visible in batch and job views", a
 });
 
 test("create page exposes VideoKit-style peer modes while keeping the existing task form", async () => {
-  const app = await readFile(path.join(root, "frontend/src/App.tsx"), "utf8");
+  const app = await readFrontend();
   const css = await readFile(path.join(root, "frontend/src/styles.css"), "utf8");
   assert.match(app, /className="create-mode-tabs"/);
   assert.match(app, />数字人</);
   assert.match(app, />H3 多参考</);
-  assert.match(app, /modeDrafts\.current\[activeMode\] = cloneDraft\(draft\)/);
+  assert.match(app, /visited\.map\(mode => <div key=\{mode\} hidden=\{activeMode !== mode\}/);
+  assert.match(app, /const CreateWorkspace = memo/);
+  assert.doesNotMatch(app, /modeDrafts\.current/);
   assert.match(app, /const modeWorkflows = useMemo\([\s\S]*?workflows\.filter/);
   assert.match(app, /h3MultiReferenceWorkflowIds\.has\(workflow\.runningHubWorkflowId\)/);
   assert.match(css, /\.create-mode-tabs button\.active/);
@@ -74,7 +80,7 @@ test("source desktop reports the application package version instead of Electron
 });
 
 test("task rows use cached static video thumbnails instead of video decoders", async () => {
-  const app = await readFile(path.join(root, "frontend/src/App.tsx"), "utf8");
+  const app = await readFrontend();
   const desktop = await readFile(path.join(root, "src/desktop/main.ts"), "utf8");
   assert.match(app, /function StaticVideoThumbnail/);
   assert.match(app, /window\.runningHub\.media\.thumbnail\(localPath\)/);

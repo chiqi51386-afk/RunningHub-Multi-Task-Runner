@@ -1,4 +1,4 @@
-import type { AccountView, CreateJobDraft, JobView, WorkflowView } from "./types";
+import type { AccountView, CreateJobDraft, JobView, WorkflowView } from "./types.js";
 
 export interface UpdateInfo {
   currentVersion: string;
@@ -43,6 +43,8 @@ export interface RunningHubRendererBridge {
     thumbnail(localPath: string): Promise<string | undefined>;
   };
   downloads: {
+    naming(): Promise<{ rule: string; preview: string }>;
+    setNaming(rule: string): Promise<{ rule: string; preview: string }>;
     directory(): Promise<string>;
     openDirectory(): Promise<void>;
     selectDirectory(): Promise<string | undefined>;
@@ -52,7 +54,7 @@ export interface RunningHubRendererBridge {
   jobs: {
     list(): Promise<JobView[]>;
     create(input: CreateJobDraft): Promise<JobView>;
-    createBatch(inputs: CreateJobDraft[]): Promise<JobView[]>;
+    createBatch(inputs: CreateJobDraft[], context?: { source: "single" | "batch"; requestId: string; expectedCount: number }): Promise<JobView[]>;
     cancel(id: string): Promise<JobView>;
     retryDownload(id: string): Promise<JobView>;
     remove(id: string): Promise<boolean>;
@@ -62,6 +64,7 @@ export interface RunningHubRendererBridge {
     onJobUpdated(listener: (job: JobView) => void): () => void;
   };
   scheduler: {
+    status(): Promise<boolean>;
     start(): Promise<void>;
     stop(): Promise<void>;
   };

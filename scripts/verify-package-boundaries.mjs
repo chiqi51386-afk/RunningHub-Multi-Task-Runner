@@ -10,7 +10,9 @@ if (prohibited.length) {
   process.exitCode = 1;
 } else {
   const workflowFiles = readdirSync("bundled-workflows").filter(file => file.endsWith(".rhworkflow.json"));
-  if (workflowFiles.length !== 4) throw new Error(`Expected 4 bundled workflows, found ${workflowFiles.length}.`);
+  const expectedWorkflows = ["infinitetalk-digital-human.rhworkflow.json", "ltx-2.3-digital-human.rhworkflow.json",
+    "minimax-h3-multi-reference.rhworkflow.json", "minimax-h3-selflift.rhworkflow.json", "h3-digital-human-mv.rhworkflow.json"].sort();
+  if (JSON.stringify(workflowFiles.sort()) !== JSON.stringify(expectedWorkflows)) throw new Error("Bundled workflow manifest mismatch; expected the five current defaults.");
   for (const file of workflowFiles) {
     const portable = JSON.parse(readFileSync(`bundled-workflows/${file}`, "utf8"));
     const inputParameters = portable.profile?.parameters?.filter(parameter => ["prompt", "image", "video", "audio"].includes(parameter.semanticType)) ?? [];
@@ -18,5 +20,5 @@ if (prohibited.length) {
       throw new Error(`Bundled workflow contains prompt/media defaults: ${file}`);
     }
   }
-  console.log(`Package boundary verified: ${files.length} files; 4 clean workflows included; local data and reference directories excluded.`);
+  console.log(`Package boundary verified: ${files.length} files; ${workflowFiles.length} clean workflows included; local data and reference directories excluded.`);
 }

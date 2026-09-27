@@ -15,6 +15,7 @@ export interface AccountView {
 }
 
 export interface WorkflowView {
+  builtIn?: boolean;
   id: string;
   name: string;
   functionDescription?: string;
@@ -45,7 +46,7 @@ export type WorkflowValueType = "string" | "integer" | "number" | "boolean" | "i
 
 export type WorkflowSemanticType =
   | "prompt" | "negative_prompt" | "image" | "video" | "audio" | "duration"
-  | "fps" | "frames" | "width" | "height" | "aspect_ratio" | "resolution" | "resolution_multiple" | "upscale_factor"
+  | "fps" | "frames" | "width" | "height" | "aspect_ratio" | "resolution" | "resolution_multiple" | "upscale_factor" | "target_resolution" | "lowres_scale"
   | "seed" | "steps" | "cfg" | "sampler" | "scheduler" | "denoise"
   | "model" | "lora" | "unknown";
 
@@ -70,6 +71,8 @@ export interface WorkflowParameterView {
   visible?: boolean;
   label?: string;
   displayOrder?: number;
+  referenceIndex?: number;
+  mappingIssue?: string;
 }
 
 export interface MediaControlBinding {
@@ -86,6 +89,7 @@ export type JobStatus =
   | "DOWNLOADING" | "COMPLETED" | "FAILED" | "RETRY_WAIT" | "CANCELLED";
 
 export interface JobView {
+  submission?: { recordedAt: number; workflowId: string; nodeInfoList: Array<{ nodeId: string; fieldName: string; fieldValue: unknown }>; instanceType?: "plus" };
   id: string;
   workflowName: string;
   status: JobStatus;
@@ -118,6 +122,7 @@ export interface JobErrorView {
 }
 
 export interface JobInputSnapshotView {
+  production?: { groupId: string; segmentIndex: number };
   workflowId: string;
   profileVersion: number;
   instanceType: "default" | "plus";
@@ -155,6 +160,8 @@ export interface JobOutputView {
 }
 
 export interface CreateJobDraft {
+  production?: { groupId: string; segmentIndex: number };
+  workflowSnapshot?: WorkflowView;
   workflowId: string;
   profileVersion: number;
   instanceType: "default" | "plus";

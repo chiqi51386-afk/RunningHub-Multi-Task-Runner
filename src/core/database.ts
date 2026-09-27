@@ -31,13 +31,37 @@ const ACCOUNT_SELECT = `
 const JOB_SELECT = `
   SELECT id, workflow_id, runninghub_workflow_id, workflow_name, profile_version,
          profile_snapshot_json, parameters_json, media_json, instance_type, output_dir, account_id,
-         remote_task_id, status, outputs_json, raw_result_json, error_json,
+         remote_task_id, status, outputs_json, raw_result_json, error_json, submission_json,
          retry_phase, retry_after, created_at, assigned_at, submit_started_at,
          generation_started_at, remote_completed_at, completed_at, updated_at
   FROM jobs`;
 
 export class CoreDatabase {
   readonly raw: BetterDatabase;
+  private bundledWorkflows = new Map<string, WorkflowRecord>();
+
+  setBundledWorkflows(records: WorkflowRecord[]): void {
+    this.bundledWorkflows = new Map(records.map(record => [record.id, structuredClone(record)]));
+  }
+
+  isBundledWorkflow(id: string): boolean { return this.bundledWorkflows.has(id); }
+
+  /** Jobs own immutable profile snapshots; they must outlive removed bundled definitions. */
+  detachJobWorkflowForeignKey(): void {
+    const schema = this.raw.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='jobs'").get() as { sql: string };
+    const constraint = /FOREIGN KEY\s*\(workflow_id\)\s*REFERENCES workflows\(id\) ON DELETE RESTRICT\s*,?/i;
+    if (!constraint.test(schema.sql)) return;
+    const indexes = this.raw.prepare("SELECT sql FROM sqlite_master WHERE tbl_name='jobs' AND type IN ('index', 'trigger') AND sql IS NOT NULL").all() as { sql: string }[];
+    this.raw.pragma("foreign_keys = OFF");
+    try {
+      this.transaction(() => {
+        this.raw.exec(schema.sql.replace(/CREATE TABLE\s+"?jobs"?/i, "CREATE TABLE jobs_detached").replace(constraint, ""));
+        this.raw.exec("INSERT INTO jobs_detached SELECT * FROM jobs; DROP TABLE jobs; ALTER TABLE jobs_detached RENAME TO jobs;");
+        for (const index of indexes) this.raw.exec(index.sql);
+        if ((this.raw.pragma("foreign_key_check") as unknown[]).length) throw new Error("任务数据库迁移校验失败");
+      });
+    } finally { this.raw.pragma("foreign_keys = ON"); }
+  }
 
   constructor(filename: string, private readonly secretStore: SecretStore) {
     if (filename !== ":memory:") mkdirSync(path.dirname(path.resolve(filename)), { recursive: true });
@@ -56,6 +80,14 @@ export class CoreDatabase {
 
   private migrate(): void {
     this.raw.exec(`
+      CREATE TABLE IF NOT EXISTS bundled_workflow_state (
+        bundle_key TEXT PRIMARY KEY, workflow_id TEXT NOT NULL,
+        bundle_hash TEXT NOT NULL, installed_hash TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS bundled_workflow_backups (
+        id INTEGER PRIMARY KEY, bundle_key TEXT NOT NULL,
+        record_json TEXT NOT NULL, backed_up_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS accounts (
         id TEXT PRIMARY KEY,
         label TEXT NOT NULL,
@@ -151,6 +183,9 @@ export class CoreDatabase {
       this.raw.exec("ALTER TABLE workflows ADD COLUMN source_url TEXT");
     }
     const jobColumns = this.raw.prepare("PRAGMA table_info(jobs)").all() as DbRow[];
+    if (!jobColumns.some(column => column.name === "submission_json")) {
+      this.raw.exec("ALTER TABLE jobs ADD COLUMN submission_json TEXT");
+    }
     if (!jobColumns.some(column => column.name === "generation_started_at")) {
       this.raw.exec("ALTER TABLE jobs ADD COLUMN generation_started_at INTEGER");
     }
@@ -395,12 +430,14 @@ export class CoreDatabase {
   }
 
   getWorkflow(id: string): WorkflowRecord | undefined {
+    const bundled = this.bundledWorkflows.get(id);
+    if (bundled) return structuredClone(bundled);
     const row = this.raw.prepare("SELECT * FROM workflows WHERE id = ?").get(id) as DbRow | undefined;
     return row ? workflowFromRow(row) : undefined;
   }
 
   listWorkflows(): WorkflowRecord[] {
-    return (this.raw.prepare("SELECT * FROM workflows WHERE deleted_at IS NULL ORDER BY created_at ASC").all() as DbRow[]).map(workflowFromRow);
+    return [...structuredClone([...this.bundledWorkflows.values()]), ...(this.raw.prepare("SELECT * FROM workflows WHERE deleted_at IS NULL ORDER BY created_at ASC").all() as DbRow[]).map(workflowFromRow)];
   }
 
   removeWorkflow(id: string): boolean {
@@ -416,6 +453,18 @@ export class CoreDatabase {
     const now = Date.now();
     const id = randomUUID();
     const profileSnapshot = structuredClone(workflow.profile);
+    if (input.namingRule) profileSnapshot.downloadNamingRule = input.namingRule;
+    if (input.production) profileSnapshot.production = { ...input.production };
+    // Persist short identities at creation, independent of completion order.
+    // AUTOINCREMENT never reuses an identity after task deletion.
+    this.raw.exec('CREATE TABLE IF NOT EXISTS download_identity (id INTEGER PRIMARY KEY AUTOINCREMENT, group_key TEXT UNIQUE)');
+    const taskNumber = Number(this.raw.prepare('INSERT INTO download_identity (group_key) VALUES (NULL)').run().lastInsertRowid);
+    const stamp = new Date(now);
+    profileSnapshot.downloadIdentity = { task: taskNumber, date: `${stamp.getFullYear()}${String(stamp.getMonth()+1).padStart(2,'0')}${String(stamp.getDate()).padStart(2,'0')}` };
+    if (input.production) {
+      this.raw.prepare('INSERT OR IGNORE INTO download_identity (group_key) VALUES (?)').run(input.production.groupId);
+      profileSnapshot.downloadIdentity.group = (this.raw.prepare('SELECT id FROM download_identity WHERE group_key = ?').get(input.production.groupId) as {id:number}).id;
+    }
     this.raw.prepare(`
       INSERT INTO jobs (
         id, workflow_id, runninghub_workflow_id, workflow_name, profile_version,
@@ -450,6 +499,7 @@ export class CoreDatabase {
   }
 
   updateJob(id: string, update: Partial<{
+    submission: Job["submission"];
     status: JobStatus;
     accountId: string | null;
     remoteTaskId: string | null;
@@ -467,6 +517,7 @@ export class CoreDatabase {
     completedAt: number | null;
   }>): Job {
     const mapping: Record<string, { column: string; encode?: (value: unknown) => unknown }> = {
+      submission: { column: "submission_json", encode: nullableJson },
       status: { column: "status" }, accountId: { column: "account_id" }, remoteTaskId: { column: "remote_task_id" },
       media: { column: "media_json", encode: json }, outputs: { column: "outputs_json", encode: nullableJson },
       rawResult: { column: "raw_result_json", encode: nullableJson }, lastError: { column: "error_json", encode: nullableJson },
@@ -594,6 +645,7 @@ function workflowFromRow(row: DbRow): WorkflowRecord {
 
 function jobFromRow(row: DbRow): Job {
   return {
+    submission: parseJson(row.submission_json, undefined as Job["submission"]),
     id: String(row.id), workflowId: String(row.workflow_id), runningHubWorkflowId: String(row.runninghub_workflow_id),
     workflowName: String(row.workflow_name ?? ""), profileVersion: Number(row.profile_version),
     profileSnapshot: parseJson(String(row.profile_snapshot_json), {} as WorkflowProfile),

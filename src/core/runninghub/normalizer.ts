@@ -78,7 +78,7 @@ export function normalizedJobResult(taskId: string, raw: unknown): JobResult {
 export function extractUploadValue(raw: unknown): string | undefined {
   const root = asObject(raw);
   const data = asObject(root.data);
-  return firstString(data.fileName, data.filename, data.download_url, data.downloadUrl);
+  return firstString(data.fileName, data.filename);
 }
 
 function firstString(...values: unknown[]): string | undefined {

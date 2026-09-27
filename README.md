@@ -1,6 +1,6 @@
 # RunningHub Multi-Task Runner
 
-一个面向 RunningHub 海外站的 Windows 桌面客户端，用来管理多个工作流、账号和生成任务。当前版本：**v0.1.9**。
+一个面向 RunningHub 海外站的 Windows 桌面客户端，用来管理多个工作流、账号和生成任务。当前版本：**v0.1.45**。
 
 ## 主要功能
 
@@ -14,8 +14,8 @@
 
 ## 直接使用 Windows 版
 
-1. 打开 [Releases](https://github.com/secure-artifacts/RunningHub-Multi-Task-Runner/releases)。
-2. 下载 `RunningHub-Runner-v0.1.9-windows-x64.zip`。
+1. 打开 [Releases](https://github.com/chiqi51386-afk/RunningHub-Multi-Task-Runner/releases)。
+2. 下载 `RunningHub-Runner-v0.1.45-windows-x64.zip`（云端构建成功后提供）。
 3. 解压全部文件，不能只把 EXE 单独拖出来。
 4. 双击 `RunningHub Runner.exe`。
 5. 添加 RunningHub API Key，导入或选择工作流，然后创建任务。
@@ -24,14 +24,15 @@
 
 ## 内置工作流
 
-首次启动会自动加入四个默认工作流：
+随软件提供五个默认工作流：
 
-- MiniMax H3 多参考生视频优化版
-- MiniMax H3 中文生成词版
+- 金鱼多参优化版
+- SelfLift双采
+- H3数字人MV
 - InfiniTetalk 单人图像驱动数字人
 - LTX 2.3 数字人
 
-四个工作流只保留节点结构、参数映射和使用说明。内置生成词、图片、视频和音频素材均已清空，使用前需要填写或上传自己的内容。
+默认工作流随软件更新，与个人工作流分开。内置生成词、图片、视频和音频素材均已清空，使用前需要填写或上传自己的内容。
 
 ## 基本使用流程
 
@@ -78,7 +79,7 @@ npm run release:win
 输出文件位于：
 
 ```text
-release-build/RunningHub-Runner-v0.1.9-windows-x64.zip
+release-build/RunningHub-Runner-v0.1.45-windows-x64.zip
 ```
 
 普通测试全部使用本地模拟接口，不会调用 RunningHub，也不会消耗余额。真实接口测试只有在明确设置确认变量和测试 API Key 后才会执行。
@@ -88,7 +89,7 @@ release-build/RunningHub-Runner-v0.1.9-windows-x64.zip
 - `src/core`：账号、工作流、任务、调度、下载和 RunningHub API 核心逻辑。
 - `src/desktop`：Electron 主进程和桌面桥接。
 - `frontend`：React 前端界面。
-- `bundled-workflows`：四个清理后的默认工作流。
+- `bundled-workflows`：五个清理后的默认工作流。
 - `tests`：自动化测试。
 - `THIRD_PARTY_LICENSES`：第三方来源和许可证清单。
 - `_reference`：仅供本地研究，不会进入 Git 或发布包。

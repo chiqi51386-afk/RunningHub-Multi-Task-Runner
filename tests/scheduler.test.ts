@@ -73,7 +73,15 @@ test("submit transport ambiguity becomes SUBMIT_UNKNOWN and is never resubmitted
   const mockFetch: typeof fetch = async input => {
     const url = String(input);
     if (url.endsWith("/accountStatus")) return Response.json({ code: 0, data: { remainMoney: "100", currentTaskCounts: 0 } });
-    if (url.includes("/run/workflow/")) { submitCalls += 1; throw new TypeError("socket reset"); }
+    if (url.includes("/run/workflow/")) {
+      submitCalls += 1;
+      const stored = backend.jobs.list()[0]!.submission;
+      assert.ok(stored, "request must be persisted before network access");
+      assert.equal(stored.workflowId, "123456789012");
+      assert.deepEqual(stored.nodeInfoList, [{ nodeId: "1", fieldName: "text", fieldValue: "x" }]);
+      assert.equal(JSON.stringify(stored).includes("key-a"), false);
+      throw new TypeError("socket reset");
+    }
     throw new Error(`Unexpected URL ${url}`);
   };
   const backend = new RunningHubBackend({ databasePath: ":memory:", fetch: mockFetch, logger: new NullLogger(), config: { pollIntervalMs: 1 } });

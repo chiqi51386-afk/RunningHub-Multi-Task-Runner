@@ -6,6 +6,13 @@ import { buildNodeInfoList, createWorkflowProfile, parseApiWorkflow } from "../s
 async function fixture(name: string): Promise<unknown> {
   return JSON.parse(await readFile(new URL(`./fixtures/${name}`, import.meta.url), "utf8"));
 }
+test("explicit blank prompt is submitted even when imported default is blank", () => {
+  const parsed = parseApiWorkflow({ "900": { class_type: "CLIPTextEncode", inputs: { text: "" }, _meta: { title: "Positive Prompt" } } });
+  const profile = createWorkflowProfile({ workflowId: "clear", name: "Clear", version: 1, parameters: parsed.parameters, now: 1 });
+  const prompt = profile.parameters.find(item => item.semanticType === "prompt")!;
+  assert.ok(prompt);
+  assert.deepEqual(buildNodeInfoList(profile, { [prompt.id]: "" }), [{ nodeId: "900", fieldName: "text", fieldValue: "" }]);
+});
 
 test("parser exposes primitive literals, preserves metadata, and skips graph links", async () => {
   const parsed = parseApiWorkflow(await fixture("workflow-simple.json"));
@@ -106,7 +113,8 @@ test("media controls are detected and an uploaded file activates its switch", as
   const image = profile.parameters.find(item => item.semanticType === "image");
   const audio = profile.parameters.find(item => item.semanticType === "audio");
   assert.equal(image?.mediaControl?.parameterId, "10_enabled");
-  assert.equal(audio?.mediaControl?.parameterId, "21_value");
+  // Matching titles without a graph relationship do not prove a control binding.
+  assert.equal(audio?.mediaControl, undefined);
 
   const list = buildNodeInfoList(profile, {}, [{ parameterId: image!.id, localPath: "replacement.png", uploadedValue: "remote.png" }]);
   assert.deepEqual(list.find(item => item.nodeId === "10" && item.fieldName === "enabled"), { nodeId: "10", fieldName: "enabled", fieldValue: true });

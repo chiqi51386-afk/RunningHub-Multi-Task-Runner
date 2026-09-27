@@ -1,0 +1,88 @@
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #202020; --sidebar: #242424; --panel: #292929; --panel-2: #343434;
+  --line: #484848; --line-soft: #353535; --muted: #aaaaaa; --text: #d0d0d0;
+  --action: #315f9e; --action-hover: #396cac; --on-action: #f5f5f5;
+  --blue: #91baff; --blue-bright: #adccff; --green: #8bc9a2; --amber: #ddbb80; --red: #ee9999; --violet: #b9afe0; --on-accent: #16263e;
+  color: var(--text); background: var(--bg);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #e8e8e8; --sidebar: #ededed; --panel: #f5f5f5; --panel-2: #dedede;
+  --line: #9e9e9e; --line-soft: #cccccc; --muted: #626262; --text: #414141;
+  --heading: #343434; --secondary: #535353; --helper: #626262;
+  --blue: #245fba; --blue-bright: #194f9f; --green: #296d42; --amber: #735217; --red: #ae3535; --violet: #695292; --on-accent: #fff;
+  --action: #315f9e; --action-hover: #284f85; --on-action: #f5f5f5;
+}
+:root[data-theme="eye"] {
+  color-scheme: light;
+  --bg: #e7e4de; --sidebar: #eae7e1; --panel: #f1eee8; --panel-2: #e0ddd6;
+  --line: #a5a097; --line-soft: #cbc6bd; --muted: #605d57; --text: #45433e;
+  --heading: #373630; --secondary: #54514b; --helper: #605d57;
+  --blue: #495d46; --blue-bright: #3a4d38; --green: #39643d; --amber: #70501f; --red: #a63f38; --violet: #6e587d; --on-accent: #fff;
+  --action: #495d46; --action-hover: #3a4d38; --on-action: #f5f5f5;
+}
+:root[data-theme="midnight"] {
+  color-scheme: dark;
+  --bg: #141414; --sidebar: #181818; --panel: #1d1d1d; --panel-2: #2b2b2b;
+  --line: #444444; --line-soft: #303030; --muted: #a3a3a3; --text: #c9c9c9;
+  --action: #315f9e; --action-hover: #396cac; --on-action: #f5f5f5;
+  --blue: #a1c4ff; --blue-bright: #bed6ff; --green: #91caa5; --amber: #dbb87e; --red: #e99a9a; --violet: #b9afe0; --on-accent: #16263e;
+}
+body { background: var(--bg); color: var(--text); }
+/* Text roles for the two light surfaces; keep dark themes and semantic colors intact. */
+:root:is([data-theme="light"], [data-theme="eye"]) :is(h1, h2, h3, .job-title strong, .batch-list strong) {
+  color: var(--heading);
+  font-weight: 600;
+}
+:root:is([data-theme="light"], [data-theme="eye"]) :is(label, .content-input-label span, .dropzone strong, .snapshot-media-head strong, .snapshot-parameter-list strong) {
+  color: var(--secondary);
+  font-weight: 500;
+}
+:root:is([data-theme="light"], [data-theme="eye"]) :is(input, textarea, select, .snapshot-parameter-list p) {
+  color: var(--text);
+  font-weight: 400;
+}
+:root:is([data-theme="light"], [data-theme="eye"]) :is(.job-meta, .settings-section p, .dropzone span, .field-label small, .boolean-field small) {
+  color: var(--helper);
+  font-weight: 400;
+}
+.sidebar { background: var(--sidebar); }
+.topbar { background: var(--bg); }
+.primary, .primary:hover, .switch.checked { background: var(--action); color: var(--on-action); border-color: var(--action); }
+.primary:hover:not(:disabled) { background: var(--action-hover); border-color: var(--action-hover); }
+.switch > span { background: var(--text); }
+.switch.checked > span { background: var(--on-action); }
+.brand-mark { background: var(--panel-2); color: var(--text); }
+.modal, .workflow-options, .task-toast, .operation-toast { background: var(--panel); color: var(--text); }
+input, textarea, select, select option { color: var(--text); background-color: var(--bg); }
+.app-select { position: relative; width: 100%; min-width: 0; }
+.app-select > button { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; font: inherit; text-align: left; }
+.app-select > button span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-select + svg { display: none; }
+.app-select-options { position: fixed; z-index: 2000; overflow-y: auto; padding: 5px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); box-shadow: 0 8px 24px #0005; }
+.app-select-options button { display: block; width: 100%; padding: 10px; text-align: left; border: 0; background: transparent; color: var(--text); font: inherit; border-radius: 4px; }
+.app-select-options button.focused, .app-select-options button[aria-selected="true"] { background: var(--line); }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+.danger-button, .icon-button.danger { color: var(--red); border: 1px solid var(--red); background: color-mix(in srgb, var(--red) 8%, var(--panel)); }
+.danger-button:hover:not(:disabled), .icon-button.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--red) 18%, var(--panel)); }
+.danger-button:disabled { opacity: .65; cursor: wait; }
+.confirm-dialog { max-width: 480px; }
+.confirm-dialog p { margin: 0; padding: 0 22px 22px; line-height: 1.65; color: var(--text); }
+.operation-toast { position: fixed; top: 76px; left: 50%; transform: translateX(-50%); z-index: 125; display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 12px 18px; pointer-events: none; box-shadow: 0 8px 24px #0004; }
+.theme-presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.theme-card { display: grid; gap: 12px; text-align: left; border: 1px solid var(--line-soft); border-radius: 8px; padding: 14px; cursor: pointer; min-height: 92px; }
+.theme-card.selected { outline: 2px solid var(--blue); outline-offset: 2px; }
+.theme-swatches { display: flex; gap: 5px; }
+.theme-swatches i { width: 25px; height: 20px; border: 1px solid #8888; border-radius: 4px; }
+.modal-backdrop { overflow-y: auto; }
+.modal { max-height: calc(100dvh - 40px); overflow-y: auto; }
+.settings-modal { display: flex; flex-direction: column; overflow: hidden; max-height: calc(100dvh - 40px); }
+.settings-modal > .modal-head, .settings-modal > .modal-actions { flex: 0 0 auto; }
+.settings-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; display: flex; flex-direction: column; gap: 16px; padding: 3px 8px 3px 3px; }
+.settings-scroll > * { flex-shrink: 0; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+.naming-preview { display: grid; gap: 7px; padding: 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--bg); }
+.naming-preview code { overflow-wrap: anywhere; color: var(--text); font-size: 12px; }
+.settings-section h3 { margin: 0; font-size: 15px; }
+.settings-section p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }

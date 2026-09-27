@@ -30,7 +30,7 @@ contextBridge.exposeInMainWorld("runningHub", {
   jobs: {
     list: () => ipcRenderer.invoke("jobs:list"),
     create: input => ipcRenderer.invoke("jobs:create", input),
-    createBatch: inputs => ipcRenderer.invoke("jobs:createBatch", inputs),
+    createBatch: (inputs, context) => ipcRenderer.invoke("jobs:createBatch", inputs, context),
     cancel: id => ipcRenderer.invoke("jobs:cancel", id),
     retryDownload: id => ipcRenderer.invoke("jobs:retry-download", id),
     remove: id => ipcRenderer.invoke("jobs:remove", id),
@@ -48,6 +48,8 @@ contextBridge.exposeInMainWorld("runningHub", {
     },
   },
   downloads: {
+    naming: () => ipcRenderer.invoke("downloads:naming"),
+    setNaming: rule => ipcRenderer.invoke("downloads:setNaming", rule),
     directory: () => ipcRenderer.invoke("downloads:directory"),
     openDirectory: () => ipcRenderer.invoke("downloads:openDirectory"),
     selectDirectory: () => ipcRenderer.invoke("downloads:selectDirectory"),
@@ -55,6 +57,7 @@ contextBridge.exposeInMainWorld("runningHub", {
     reveal: localPath => ipcRenderer.invoke("downloads:reveal", localPath),
   },
   scheduler: {
+    status: () => ipcRenderer.invoke("scheduler:status"),
     start: () => ipcRenderer.invoke("scheduler:start"),
     stop: () => ipcRenderer.invoke("scheduler:stop"),
   },

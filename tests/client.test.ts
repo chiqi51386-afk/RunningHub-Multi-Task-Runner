@@ -11,7 +11,7 @@ test("client follows official auth, upload, submit, query, and output contract",
     if (url.endsWith("/uc/openapi/accountStatus")) {
       return Response.json({ code: 0, data: { remainMoney: "12.5", remainCoins: "3", currentTaskCounts: 0, apiType: "personal" } });
     }
-    if (url.endsWith("/media/upload/binary")) return Response.json({ code: 0, data: { download_url: "https://cdn/file.png" } });
+    if (url.endsWith("/media/upload/binary")) return Response.json({ code: 0, data: { fileName: "https://cdn/file.png" } });
     if (url.endsWith("/openapi/v2/run/workflow/123456789012")) return Response.json({ code: 0, data: { taskId: "task-1" } });
     if (url.endsWith("/openapi/v2/query")) {
       queryCount += 1;

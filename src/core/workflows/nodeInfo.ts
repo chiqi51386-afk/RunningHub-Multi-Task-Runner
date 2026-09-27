@@ -25,7 +25,8 @@ export function buildNodeInfoList(
     // from the imported workflow snapshot.
     const fieldValue = mediaItem?.uploadedValue ?? (hasInput ? resolvedInputs[parameter.id] : undefined);
     if (fieldValue === undefined) continue;
-    if (mediaItem?.uploadedValue === undefined && !parameter.submitDefault && valuesEqual(fieldValue, parameter.defaultValue)) continue;
+    const explicitContent = hasInput && ((["image", "audio", "video"].includes(parameter.valueType) && fieldValue === "") || ["prompt", "negative_prompt"].includes(parameter.semanticType));
+    if (mediaItem?.uploadedValue === undefined && !explicitContent && !parameter.submitDefault && valuesEqual(fieldValue, parameter.defaultValue)) continue;
     upsertNode(nodes, parameter.nodeId, parameter.fieldName, fieldValue);
   }
   return nodes;

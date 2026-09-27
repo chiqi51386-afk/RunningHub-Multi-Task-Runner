@@ -1,0 +1,104 @@
+import type { CreateJobDraft, MediaParameterDraft, WorkflowParameterView, WorkflowView } from "./types.js";
+
+export type CreateMode = "digital-human" | "h3-multi-reference" | "h3-mv";
+export const isMediaParameter = (parameter: WorkflowParameterView) => ["image", "video", "audio"].includes(parameter.valueType);
+export function cloneDraft(draft: CreateJobDraft): CreateJobDraft {
+  return { ...draft, production: draft.production ? { ...draft.production } : undefined, parameterValues: { ...draft.parameterValues }, mediaOverrides: Object.fromEntries(Object.entries(draft.mediaOverrides).map(([id, media]) => [id, { ...media }])) };
+}
+export function createDraft(workflow?: WorkflowView): CreateJobDraft {
+  const parameterValues = Object.fromEntries((workflow?.parameters ?? []).map(parameter => [parameter.id, parameter.defaultValue]));
+  const mediaOverrides: Record<string, MediaParameterDraft> = {};
+  for (const parameter of workflow?.parameters ?? []) {
+    if (!isMediaParameter(parameter)) continue;
+    mediaOverrides[parameter.id] = { enabled: false, mode: "clear" };
+    if (parameter.mediaControl?.autoEnableOnReplace) parameterValues[parameter.mediaControl.parameterId] = parameter.mediaControl.inactiveValue;
+  }
+  return { workflowSnapshot: workflow ? structuredClone(workflow) : undefined, workflowId: workflow?.id ?? "", profileVersion: workflow?.profileVersion ?? 0, instanceType: "default", parameterValues, mediaOverrides };
+}
+export function visibleMedia(workflow: WorkflowView | undefined, mode: CreateMode) {
+  const media = (workflow?.parameters ?? []).filter(parameter => parameter.visible !== false && isMediaParameter(parameter))
+    .sort((a, b) => (a.referenceIndex ?? a.displayOrder ?? 9999) - (b.referenceIndex ?? b.displayOrder ?? 9999));
+  if (mode === "h3-multi-reference") return media.filter(parameter => parameter.valueType === "image").slice(0, 6);
+  return media.filter(parameter => parameter.valueType === "image" || parameter.valueType === "audio")
+    .sort((a, b) => Number(a.valueType === "audio") - Number(b.valueType === "audio"));
+}
+export function setDraftMedia(draft: CreateJobDraft, parameter: WorkflowParameterView, media: MediaParameterDraft): CreateJobDraft {
+  const parameterValues = { ...draft.parameterValues };
+  if (parameter.mediaControl?.autoEnableOnReplace) parameterValues[parameter.mediaControl.parameterId] = media.mode === "replace" ? parameter.mediaControl.activeValue : parameter.mediaControl.inactiveValue;
+  return { ...draft, parameterValues, mediaOverrides: { ...draft.mediaOverrides, [parameter.id]: media } };
+}
+export function exchangeImages(draft: CreateJobDraft, source: WorkflowParameterView, target: WorkflowParameterView): CreateJobDraft {
+  if (source.id === target.id || source.valueType !== "image" || target.valueType !== "image") return draft;
+  const from = draft.mediaOverrides[source.id];
+  if (from?.mode !== "replace") return draft;
+  const to = draft.mediaOverrides[target.id] ?? { enabled: false, mode: "clear" as const };
+  return setDraftMedia(setDraftMedia(draft, source, { ...to }), target, { ...from });
+}
+export function compatibleValue(parameter: WorkflowParameterView, value: unknown): boolean {
+  if (parameter.options?.length) return parameter.options.some(option => JSON.stringify(typeof option === "object" && option !== null && "value" in option ? option.value : option) === JSON.stringify(value));
+  if (["integer", "number"].includes(parameter.valueType)) return typeof value === "number" && Number.isFinite(value) && (parameter.valueType !== "integer" || Number.isInteger(value)) && (parameter.min === undefined || value >= parameter.min) && (parameter.max === undefined || value <= parameter.max);
+  return typeof value === typeof parameter.defaultValue;
+}
+export function transferDraft(current: CreateJobDraft, previous: WorkflowView | undefined, next: WorkflowView, mode: CreateMode): CreateJobDraft {
+  if (!previous || current.workflowId !== previous.id) throw new Error("无法确认原工作流映射，已保留当前输入，未切换。");
+  for (const workflow of [previous, next]) {
+    const issue = visibleMedia(workflow, mode).find(parameter => parameter.mappingIssue);
+    if (issue) throw new Error(issue.mappingIssue);
+  }
+  let result = createDraft(next);
+  // Switching workflows retains the user's explicit compute-tier choice.
+  // Fresh drafts still start with the standard tier.
+  result.instanceType = current.instanceType;
+  const oldParameters = previous?.parameters ?? [];
+  for (const source of oldParameters.filter(item => item.semanticType === "prompt" && item.visible !== false)) {
+    const targets = next.parameters.filter(item => item.visible !== false && item.semanticType === source.semanticType && item.valueType === source.valueType);
+    const sources = oldParameters.filter(item => item.visible !== false && item.semanticType === source.semanticType && item.valueType === source.valueType);
+    if (targets.length !== 1 || sources.length !== 1) throw new Error("生成词映射缺失或存在多个候选，已保留当前输入，未切换工作流。");
+  }
+  for (const parameter of next.parameters) {
+    // Semantic similarity is not compatibility across different node classes.
+    // Never transfer model internals (sampler, scheduler, steps, CFG, etc.).
+    const portable = mode === "digital-human" ? ["prompt"] : ["prompt", "duration", "aspect_ratio", "resolution", "upscale_factor"];
+    if (parameter.visible === false || !portable.includes(parameter.semanticType)) continue;
+    const candidates = oldParameters.filter(item => item.visible !== false && item.semanticType === parameter.semanticType && item.valueType === parameter.valueType);
+    const source = candidates.find(item => item.key === parameter.key) ?? (candidates.length === 1 ? candidates[0] : undefined);
+    if (source) {
+      if (!compatibleValue(parameter, current.parameterValues[source.id])) throw new Error(`目标工作流不支持当前参数 ${parameter.fieldName}，请先调整，输入未丢弃。`);
+      result.parameterValues[parameter.id] = current.parameterValues[source.id];
+    }
+  }
+  const oldMedia = visibleMedia(previous, mode);
+  for (const type of ["image", "audio"] as const) {
+    const sources = oldMedia.filter(item => item.valueType === type);
+    const targets = visibleMedia(next, mode).filter(item => item.valueType === type);
+    if (sources.slice(targets.length).some(source => current.mediaOverrides[source.id]?.mode === "replace")) throw new Error("目标工作流媒体槽不足，已保留输入，未切换。");
+    visibleMedia(next, mode).filter(item => item.valueType === type).forEach((target, index) => {
+      const source = target.referenceIndex !== undefined && sources.some(item => item.referenceIndex !== undefined)
+        ? sources.find(item => item.referenceIndex === target.referenceIndex) : sources[index];
+      if (!source && sources[index] && current.mediaOverrides[sources[index]!.id]?.mode === "replace") throw new Error("参考图编号不兼容，已保留输入，未切换。");
+      const media = source ? current.mediaOverrides[source.id] : undefined;
+      if (media) result = setDraftMedia(result, target, { ...media });
+    });
+  }
+  return result;
+}
+export function clearDraftInputs(draft: CreateJobDraft, workflow: WorkflowView): CreateJobDraft {
+  let result = cloneDraft(draft);
+  for (const parameter of workflow.parameters) {
+    if (parameter.semanticType === "prompt" && parameter.visible !== false) result.parameterValues[parameter.id] = "";
+    if (isMediaParameter(parameter)) result = setDraftMedia(result, parameter, { enabled: false, mode: "clear" });
+  }
+  return result;
+}
+export function prepareDraft(draft: CreateJobDraft, workflow: WorkflowView, mode: CreateMode): CreateJobDraft {
+  if (draft.workflowId !== workflow.id || draft.profileVersion !== workflow.profileVersion) throw new Error("工作流映射已变化，请重新确认输入后提交。");
+  if (Object.values(draft.mediaOverrides).some(media => media.mode === "replace" && !media.localPath && !media.file)) throw new Error("草稿素材无法恢复，请重新选择文件后提交。");
+  const issue = visibleMedia(workflow, mode).find(parameter => parameter.mappingIssue);
+  if (issue) throw new Error(issue.mappingIssue);
+  let result = cloneDraft(draft);
+  const allowed = new Set(visibleMedia(workflow, mode).map(item => item.id));
+  for (const parameter of workflow.parameters) {
+    if (isMediaParameter(parameter) && !allowed.has(parameter.id)) result = setDraftMedia(result, parameter, { enabled: false, mode: "clear" });
+  }
+  return result;
+}

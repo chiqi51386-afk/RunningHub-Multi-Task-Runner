@@ -1,7 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from "electron";
+import { focusExistingWindow } from "./windowLifecycle.js";
 import { createHash } from "node:crypto";
+import { resolveMediaInputs } from "../core/workflows/mediaInputs.js";
+import { MV_WORKFLOW_ID, validateMvInput } from "../core/workflows/mvValidation.js";
+import { syncBundledWorkflows } from "../core/workflows/bundled.js";
+import { namingRule, shortOutputPath, type NamingRule } from "../core/downloads/naming.js";
 import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, mkdtempSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { access, appendFile, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -14,6 +19,7 @@ import { latestReleaseApiUrls, latestReleaseUrl, parseLatestRelease, trustedUpda
 import type { UpdateInfo, UpdateProgress } from "./updates.js";
 
 interface RendererDraft {
+  production?: { groupId: string; segmentIndex: number };
   workflowId: string;
   profileVersion: number;
   instanceType?: InstanceType;
@@ -23,7 +29,10 @@ interface RendererDraft {
 
 let backend: RunningHubBackend;
 const smokeMode = process.argv.includes("--smoke");
+if (smokeMode) app.setPath("userData", mkdtempSync(path.join(app.getPath("temp"), "rh-desktop-smoke-")));
+else app.setPath("userData", path.join(app.getPath("appData"), "runninghub-multi-task-runner-core"));
 let mainWindow: BrowserWindow | undefined;
+let quitting = false;
 let desktopSettingsPath = "";
 let defaultOutputDir = "";
 let thumbnailCacheDir = "";
@@ -68,15 +77,15 @@ async function checkForUpdate() {
 }
 
 function sendUpdateProgress(progress: UpdateProgress): void {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("updates:progress", progress);
+  if (!quitting && mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) mainWindow.webContents.send("updates:progress", progress);
 }
 
 function registerRendererEvents(): void {
   backend.events.on("account.updated", account => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("accounts:updated", accountView(account));
+    if (!quitting && mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) mainWindow.webContents.send("accounts:updated", accountView(account));
   });
   backend.events.on("job.updated", job => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("jobs:updated", jobView(job));
+    if (!quitting && mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) mainWindow.webContents.send("jobs:updated", jobView(job));
   });
 }
 
@@ -206,13 +215,13 @@ Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
   }
 }
 
-interface DesktopSettings { outputDir?: string }
+interface DesktopSettings { outputDir?: string; namingRule?: NamingRule }
 
 async function readDesktopSettings(): Promise<DesktopSettings> {
   if (!desktopSettingsPath) return {};
   try {
     const parsed = JSON.parse(await readFile(desktopSettingsPath, "utf8")) as DesktopSettings;
-    return typeof parsed.outputDir === "string" && path.isAbsolute(parsed.outputDir) ? parsed : {};
+    return { outputDir: typeof parsed.outputDir === "string" && path.isAbsolute(parsed.outputDir) ? parsed.outputDir : undefined, namingRule: namingRule(parsed.namingRule) };
   } catch { return {}; }
 }
 
@@ -257,6 +266,7 @@ function accountView(account: Account) {
 
 function workflowView(workflow: WorkflowRecord) {
   return {
+    builtIn: backend.workflows.isBundled(workflow.id),
     id: workflow.id, name: workflow.name, runningHubWorkflowId: workflow.runningHubWorkflowId, sourceUrl: workflow.sourceUrl,
     parameterCount: workflow.profile.parameters.length, needsReview: workflow.profile.needsReview,
     profileVersion: workflow.profileVersion, updatedAt: workflow.updatedAt,
@@ -292,6 +302,7 @@ function jobView(job: Job) {
   });
   return {
     id: job.id, workflowName: job.workflowName, status: job.status, accountLabel: account?.label,
+    submission: job.submission,
     instanceType: job.instanceType,
     remoteTaskId: job.remoteTaskId, createdAt: job.createdAt, startedAt: job.assignedAt, completedAt: job.completedAt,
     generationStartedAt: job.generationStartedAt,
@@ -307,6 +318,7 @@ function jobView(job: Job) {
     } : undefined,
     texts: job.outputs?.texts,
     inputs: {
+      production: job.profileSnapshot.production,
       workflowId: job.workflowId,
       profileVersion: job.profileVersion,
       instanceType: job.instanceType,
@@ -330,10 +342,10 @@ function jobView(job: Job) {
 }
 
 async function seedBundledWorkflows(): Promise<void> {
-  if (backend.workflows.list().length > 0) return;
   const files = [
     "minimax-h3-multi-reference.rhworkflow.json",
-    "minimax-h3-chinese-prompt.rhworkflow.json",
+    "minimax-h3-selflift.rhworkflow.json",
+    "h3-digital-human-mv.rhworkflow.json",
     "infinitetalk-digital-human.rhworkflow.json",
     "ltx-2.3-digital-human.rhworkflow.json",
   ];
@@ -348,10 +360,10 @@ async function seedBundledWorkflows(): Promise<void> {
     }
   }
   if (!directory) throw new Error(`找不到内置工作流目录。已检查：${candidates.join("；")}`);
-  for (const file of files) {
-    const portable = JSON.parse(await readFile(path.join(directory, file), "utf8")) as unknown;
-    backend.workflows.importPortablePackage(portable);
-  }
+  const bundles = await Promise.all(files.map(async file => ({ key: file,
+    value: JSON.parse(await readFile(path.join(directory!, file), "utf8")) as unknown,
+  })));
+  syncBundledWorkflows(backend.database, bundles);
 }
 
 function createJobInput(draft: RendererDraft, outputDir: string): CreateJobInput {
@@ -359,25 +371,26 @@ function createJobInput(draft: RendererDraft, outputDir: string): CreateJobInput
   if (!workflow) throw new Error("工作流尚未导入桌面核心，请重新导入 API JSON。");
   if (workflow.profileVersion !== draft.profileVersion) throw new Error("工作流 Profile 已更新，请重新打开创建任务页面。");
   const parameters = { ...draft.parameterValues };
+  const mappingIssue = workflow.profile.parameters.find(parameter => parameter.visible !== false && parameter.mappingIssue);
+  if (mappingIssue) throw new Error(mappingIssue.mappingIssue);
   const parameterIds = new Set(workflow.profile.parameters.map(parameter => parameter.id));
   for (const parameterId of Object.keys(parameters)) {
     if (!parameterIds.has(parameterId)) throw new Error(`参数 ${parameterId} 不属于当前工作流 Profile。`);
   }
-  const media = [];
-  for (const [parameterId, override] of Object.entries(draft.mediaOverrides)) {
-    if (!parameterIds.has(parameterId)) throw new Error(`媒体参数 ${parameterId} 不属于当前工作流 Profile。`);
-    if (override.mode === "replace") {
-      if (!override.localPath) throw new Error(`媒体 ${parameterId} 已选择替换，但没有本地文件。`);
-      media.push({ parameterId, localPath: override.localPath });
-    } else if (override.mode === "clear") {
-      parameters[parameterId] = "";
+  // Old renderer drafts may contain values copied from a different workflow.
+  // Hidden internal widgets belong to this profile, not to the shared form.
+  for (const parameter of workflow.profile.parameters) {
+    if (parameter.visible === false && !["image", "audio", "video"].includes(parameter.valueType)) {
+      parameters[parameter.id] = parameter.defaultValue;
     }
   }
+  const resolved = resolveMediaInputs(workflow.profile, parameters, draft.mediaOverrides ?? {});
+  if (workflow.runningHubWorkflowId === MV_WORKFLOW_ID) validateMvInput(workflow.profile, resolved.parameters, resolved.media);
   // Freeze the selected download directory into the job snapshot. Relying
   // only on the process-wide setting makes recovered jobs vulnerable to a
   // restart or a later settings change and can silently fall back to the
   // Electron user-data downloads folder.
-  return { workflowId: draft.workflowId, parameters, media, instanceType: draft.instanceType === "plus" ? "plus" : "default", outputDir };
+  return { workflowId: draft.workflowId, ...resolved, production: draft.production, instanceType: draft.instanceType === "plus" ? "plus" : "default", outputDir };
 }
 
 async function currentOutputDir(): Promise<string> {
@@ -392,6 +405,14 @@ async function currentOutputDir(): Promise<string> {
 }
 
 function registerHandlers(): void {
+  const namingPreview = (rule: NamingRule) => ({ rule, preview: shortOutputPath({ rule, identity:{task:1,date:new Date().toISOString().slice(0,10).replaceAll('-','')},workflow: "H3多参考", index: 0,total:1, url: "https://example.invalid/video.mp4", extension: "mp4" }) });
+  ipcMain.handle("downloads:naming", async () => namingPreview(namingRule((await readDesktopSettings()).namingRule)));
+  ipcMain.handle("downloads:setNaming", async (_event, value: unknown) => {
+    if (!["workflow-date", "date", "original"].includes(String(value))) throw new Error("未知命名规则");
+    const rule = namingRule(value);
+    await saveDesktopSettings({ ...(await readDesktopSettings()), namingRule: rule });
+    return namingPreview(rule);
+  });
   ipcMain.handle("accounts:list", () => backend.accounts.list().map(accountView));
   ipcMain.handle("accounts:add", (_event, input: { label: string; apiKey: string }) => accountView(backend.accounts.add(input.label, input.apiKey)));
   ipcMain.handle("accounts:updateKey", (_event, input: { id: string; apiKey: string }) => accountView(backend.accounts.updateKey(input.id, input.apiKey)));
@@ -450,14 +471,30 @@ function registerHandlers(): void {
   ipcMain.handle("jobs:list", () => backend.jobs.list().map(jobView));
   ipcMain.handle("jobs:create", async (_event, draft: RendererDraft) => {
     const outputDir = await currentOutputDir();
-    return jobView(backend.jobs.create(createJobInput(draft, outputDir)));
+    return jobView(backend.jobs.create({ ...createJobInput(draft, outputDir), namingRule: namingRule((await readDesktopSettings()).namingRule) }));
   });
-  ipcMain.handle("jobs:createBatch", async (_event, drafts: RendererDraft[]) => {
+  ipcMain.handle("jobs:createBatch", async (_event, drafts: RendererDraft[], context?: { source: string; requestId: string; expectedCount: number }) => {
     if (!Array.isArray(drafts) || drafts.length === 0) throw new Error("批次中没有任务。");
     if (drafts.length > 500) throw new Error("单次最多提交 500 个任务。");
+    if (context && (context.expectedCount !== drafts.length || !["single", "batch"].includes(context.source)
+      || (context.source === "single" && drafts.length !== 1))) throw new Error("提交来源或任务数量不一致，尚未创建任务。");
+    // Only operational metadata: never record API keys, prompts or media paths.
+    const audit = async (stage: string, jobIds: string[] = []) => {
+      try { await appendFile(path.join(app.getPath("userData"), "submission-audit.jsonl"), JSON.stringify({
+        time: new Date().toISOString(), stage, source: context?.source ?? "legacy",
+        requestId: typeof context?.requestId === "string" ? context.requestId.slice(0, 64) : undefined,
+        requestedCount: drafts.length, createdCount: jobIds.length, jobIds,
+      }) + "\n"); } catch { console.error("Submission audit write failed"); }
+    };
+    await audit("received");
+    try {
     const outputDir = await currentOutputDir();
     const inputs = drafts.map(draft => createJobInput(draft, outputDir));
-    return inputs.map(input => jobView(backend.jobs.create(input)));
+    const rule = namingRule((await readDesktopSettings()).namingRule);
+    const created = backend.jobs.createBatch(inputs.map(input => ({ ...input, namingRule: rule })));
+    await audit("committed", created.map(job => job.id));
+    return created.map(jobView);
+    } catch (error) { await audit("failed"); throw error; }
   });
   ipcMain.handle("jobs:cancel", async (_event, id: string) => jobView(await backend.scheduler.cancel(id)));
   ipcMain.handle("jobs:retry-download", async (_event, id: string) => jobView(backend.downloads.retryNow(id)));
@@ -480,13 +517,13 @@ function registerHandlers(): void {
     const resolved = path.resolve(selected);
     await mkdir(resolved, { recursive: true });
     backend.config.outputDir = resolved;
-    await saveDesktopSettings({ outputDir: resolved });
+    await saveDesktopSettings({ ...(await readDesktopSettings()), outputDir: resolved });
     return resolved;
   });
   ipcMain.handle("downloads:resetDirectory", async () => {
     await mkdir(defaultOutputDir, { recursive: true });
     backend.config.outputDir = defaultOutputDir;
-    await saveDesktopSettings({ outputDir: defaultOutputDir });
+    await saveDesktopSettings({ ...(await readDesktopSettings()), outputDir: defaultOutputDir });
     return defaultOutputDir;
   });
   ipcMain.handle("downloads:reveal", async (_event, localPath: string) => {
@@ -497,6 +534,7 @@ function registerHandlers(): void {
     shell.showItemInFolder(resolved);
     return resolved;
   });
+  ipcMain.handle("scheduler:status", () => backend.scheduler.isRunning());
   ipcMain.handle("scheduler:start", async () => { await backend.start(); });
   ipcMain.handle("scheduler:stop", async () => { await backend.stop(); });
   ipcMain.handle("external:openApiKeys", async () => { await shell.openExternal(runningHubApiKeysUrl); });
@@ -550,11 +588,13 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
   registerHandlers();
   const window = await createWindow();
   mainWindow = window;
+  window.once("closed", () => { if (mainWindow === window) mainWindow = undefined; });
   registerRendererEvents();
   // Never hold the window behind network-bound account checks or job recovery.
   // The bridge is already registered, so the UI can render while startup work proceeds.
   await backend.start();
   if (smokeMode) {
+    window.webContents.setBackgroundThrottling(false);
     const connected = await window.webContents.executeJavaScript(`(async () => {
       if (!window.runningHub?.jobs?.createBatch || !window.runningHub?.media?.thumbnail || !window.runningHub?.downloads?.selectDirectory || !window.runningHub?.downloads?.resetDirectory || !window.runningHub?.updates?.check || !window.runningHub?.updates?.downloadAndInstall) return false;
       const [accounts, workflows, jobs] = await Promise.all([
@@ -563,9 +603,234 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       return Array.isArray(accounts) && Array.isArray(workflows) && Array.isArray(jobs);
     })()`);
     console.log(connected ? "DESKTOP_BRIDGE_SMOKE_PASS" : "DESKTOP_BRIDGE_SMOKE_FAIL");
+    const overviewScroll = await window.webContents.executeJavaScript(`(async () => {
+      for (let i = 0; i < 30 && !document.querySelector('.overview-scroll'); i++) await new Promise(resolve => setTimeout(resolve, 100));
+      const lists = [...document.querySelectorAll('.overview-scroll')];
+      if (lists.length !== 2) return false;
+      const fixtures = [];
+      try {
+        for (const list of lists) {
+          const fixture = document.createElement('div');
+          fixture.style.height = '3000px';
+          list.append(fixture);
+          fixtures.push(fixture);
+        }
+        lists[0].scrollTop = 150;
+        if (lists[0].scrollTop !== 150 || lists[1].scrollTop !== 0) return false;
+        lists[1].scrollTop = 250;
+        return lists[1].scrollTop === 250 && lists[0].scrollTop === 150;
+      } finally { fixtures.forEach(element => element.remove()); }
+    })()`);
+    console.log(overviewScroll ? "DESKTOP_OVERVIEW_SCROLL_PASS" : "DESKTOP_OVERVIEW_SCROLL_FAIL");
+    const settingsScroll = await window.webContents.executeJavaScript(`(async () => {
+      const wait = () => new Promise(resolve => setTimeout(resolve, 100));
+      for (let i = 0; i < 30 && !document.querySelector('.settings-button'); i++) await wait();
+      document.querySelector('.settings-button')?.click();
+      await wait();
+      const scroll = document.querySelector('.settings-scroll');
+      if (!scroll || document.querySelectorAll('.theme-card').length !== 4) return false;
+      scroll.scrollTop = scroll.scrollHeight;
+      const bounds = document.querySelector('.settings-modal').getBoundingClientRect();
+      return (scroll.scrollHeight <= scroll.clientHeight || scroll.scrollTop > 0) && bounds.top >= 0 && bounds.bottom <= innerHeight;
+    })()`);
+    console.log(settingsScroll ? "DESKTOP_SETTINGS_SCROLL_PASS" : "DESKTOP_SETTINGS_SCROLL_FAIL");
+    await window.webContents.executeJavaScript(`(async () => {
+      const wait = () => new Promise(r => setTimeout(r, 120));
+      const modal = document.querySelector('.settings-modal');
+      if (modal.querySelector('select')) throw new Error('Native settings select remains');
+      const buttons = modal.querySelectorAll('.app-select > button');
+      if (buttons.length !== 2) throw new Error('Settings dropdowns missing');
+      buttons[0].scrollIntoView({block:'center'}); await wait(); buttons[0].click(); await wait();
+      const list = modal.querySelector('.app-select-options');
+      if (!list || list.querySelectorAll('[role="option"]').length !== 3) throw new Error('Dropdown did not open');
+      const r = list.getBoundingClientRect();
+      if (r.top < 0 || r.bottom > innerHeight + 1) throw new Error('Dropdown outside viewport');
+      buttons[0].dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true})); await wait();
+      if (!document.querySelector('.settings-modal') || modal.querySelector('.app-select-options')) throw new Error('Escape incorrectly closes settings');
+      buttons[1].scrollIntoView({block:'center'}); await wait(); buttons[1].click(); await wait();
+      buttons[1].dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true})); await wait();
+      buttons[1].dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})); await wait();
+      if (!buttons[1].textContent.includes('8 秒')) throw new Error('Keyboard selection failed');
+    })()`);
+    console.log('DESKTOP_DROPDOWN_PASS');
+    const themesPassed = await window.webContents.executeJavaScript(`(async () => {
+      const ids = ['light', 'dark', 'eye', 'midnight'];
+      const cards = [...document.querySelectorAll('.theme-card')];
+      for (let i = 0; i < cards.length; i++) {
+        cards[i].click();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        if (document.documentElement.dataset.theme !== ids[i]) return false;
+        if (cards[i].getAttribute('aria-pressed') !== 'true') return false;
+        const style = getComputedStyle(document.querySelector('.settings-modal'));
+        if (style.backgroundColor === style.color) return false;
+      }
+      return cards.length === 4;
+    })()`);
+    console.log(themesPassed ? "DESKTOP_THEMES_PASS" : "DESKTOP_THEMES_FAIL");
+    const generationLayout = await window.webContents.executeJavaScript(`(async () => {
+      const wait = () => new Promise(resolve => setTimeout(resolve, 150));
+      localStorage.setItem('rh-runner.draft.v1.h3-multi-reference', JSON.stringify({
+        workflowId: 'removed-legacy-workflow', profileVersion: 19, instanceType: 'default',
+        parameterValues: { prompt: 'legacy input must be backed up', resolution: 'bad-old-value' },
+        mediaOverrides: { image_1: { mode: 'replace', enabled: true, localPath: 'C:/legacy/photo.png' } }
+      }));
+      document.querySelector('.settings-modal .modal-head button')?.click();
+      [...document.querySelectorAll('.nav-list button')].find(button => button.textContent.includes('创建任务'))?.click();
+      await wait();
+      [...document.querySelectorAll('.create-mode-tabs button')].find(button => button.textContent.includes('H3'))?.click();
+      await wait();
+      for (let index = 0; index < 2; index++) {
+        const workspace = document.querySelector('.create-mode-panel:not([hidden])');
+        if (!workspace) return false;
+        workspace.querySelector('[role="combobox"]')?.click();
+        await wait();
+        const options = workspace.querySelectorAll('[role="option"]');
+        if (options.length !== 2) return false;
+        options[index].click();
+        await wait();
+        const optimization = workspace.querySelector('button[aria-label="中文生成词优化"]');
+        if (!optimization || optimization.getAttribute('aria-pressed') !== 'false') return false;
+        const section = [...workspace.querySelectorAll('.form-section')].find(element => element.querySelector('h2')?.textContent === '生成参数');
+        const labels = [...(section?.querySelectorAll('.dynamic-grid > label') ?? [])];
+        const names = labels.map(element => element.textContent);
+        if (names.length !== 4 || !names[0].includes('画面比例') || !names[1].includes('时长') || !names[2].includes('分辨率') || !/倍率|倍数|低分辨率阶段比例/.test(names[3])) throw new Error('H3 layout mismatch: ' + JSON.stringify(names));
+        if (labels.some(label => { const input = label.querySelector('input'); return input && input.value === ''; })) throw new Error('Upgrade left generation parameters empty');
+      }
+      if (!Object.keys(localStorage).some(key => key.startsWith('rh-runner.draft-backup.h3-multi-reference.') && localStorage.getItem(key).includes('legacy input must be backed up'))) throw new Error('Legacy draft backup missing');
+      return true;
+    })()`);
+    console.log(generationLayout ? "DESKTOP_H3_LAYOUT_PASS" : "DESKTOP_H3_LAYOUT_FAIL");
+    const mvLayout = await window.webContents.executeJavaScript(`(async () => {
+      const wait = () => new Promise(resolve => setTimeout(resolve, 150));
+      [...document.querySelectorAll('.create-mode-tabs button')].find(b => b.textContent === 'H3 数字人 MV')?.click();
+      await wait();
+      const root = document.querySelector('.mv-workspace');
+      if (!root || root.querySelectorAll('.mv-segment').length !== 2) return false;
+      if (root.querySelectorAll('.media-image').length !== 4 || root.querySelectorAll('.media-audio').length !== 1) return false;
+      if (root.querySelectorAll('.mv-generation .app-select').length !== 1 || root.querySelectorAll('.mv-segment .app-select').length !== 0) return false;
+      if (root.querySelectorAll('button[aria-label="MV Plus 高显存"]').length !== 1 || root.querySelectorAll('.mv-segment .switch').length) return false;
+      const plus = root.querySelector('button[aria-label="MV Plus 高显存"]');
+      const standardPlus = document.querySelector('.create-mode-panel[hidden] .instance-mode-control .switch');
+      if (!plus.closest('.instance-mode-control') || (standardPlus && (getComputedStyle(plus).height !== getComputedStyle(standardPlus).height || getComputedStyle(plus).width !== getComputedStyle(standardPlus).width))) throw new Error('MV Plus differs from standard control');
+      const stage = [...root.querySelectorAll('button')].find(b => b.textContent === '加入制作批次');
+      stage.click(); await wait();
+      if (!root.querySelector('[role="alert"]')?.textContent.includes('未填写生成词') || root.querySelectorAll('.batch-list article').length) return false;
+      if (!root.querySelector('.batch-submit').disabled) return false;
+      const segments = root.querySelectorAll('.mv-segment');
+      if ([...segments].some(s => s.querySelectorAll('textarea').length !== 1)) return false;
+      const prompt = segments[0].querySelector('textarea');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(prompt, 'MV segment one');
+      prompt.dispatchEvent(new Event('input', { bubbles: true }));
+      await wait();
+      if (segments[1].querySelector('textarea').value !== '') return false;
+      const end = segments[0].querySelector('input[aria-label="第 1 段音频结束"]');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(end, '12.5');
+      end.dispatchEvent(new Event('input', { bubbles: true }));
+      await wait();
+      const start = segments[0].querySelector('input[aria-label="第 1 段音频起点"]');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(start, '2');
+      start.dispatchEvent(new Event('input', { bubbles: true }));
+      await wait();
+      const edited = JSON.parse(localStorage.getItem('rh-runner.mv-segments.v1'));
+      const durationId = edited[0].draft.workflowSnapshot.parameters.find(p => p.key === '85.duration').id;
+      if (edited[0].draft.parameterValues[durationId] !== 10.5 || edited[1].draft.parameterValues[durationId] !== 10 || end.value !== '12.5') return false;
+      const add = root.querySelector('.mv-add-segment');
+      const last = [...root.querySelectorAll('.mv-segment')].at(-1);
+      if (!add || !last || !(last.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING)) return false;
+      [...root.querySelectorAll('button')].find(b => b.textContent === '增加段落')?.click();
+      await wait();
+      if (root.querySelectorAll('.mv-segment').length !== 3) return false;
+      const saved = JSON.parse(localStorage.getItem('rh-runner.mv-segments.v1'));
+      if (saved.length !== 3 || saved[0].draft.parameterValues.prompt !== 'MV segment one') return false;
+      return true;
+    })()`);
+    console.log(mvLayout ? "DESKTOP_MV_LAYOUT_PASS" : "DESKTOP_MV_LAYOUT_FAIL");
+    if (mvLayout && process.argv.includes("--preview-mv")) {
+      window.setSize(1280, 1100);
+      window.webContents.setZoomFactor(0.85);
+      window.showInactive();
+      await window.webContents.executeJavaScript(`(() => {
+        const segments = document.querySelectorAll('.mv-segment');
+        segments[segments.length - 1].querySelector('.icon-button')?.click();
+        const textarea = segments[0].querySelector('textarea');
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(textarea, '');
+        textarea.dispatchEvent(new Event('input', {bubbles: true}));
+        document.querySelector('.mv-global')?.scrollIntoView({block:'start'});
+      })()`);
+      await new Promise(resolve => setTimeout(resolve, 700));
+      await writeFile(path.join(app.getPath("temp"), "rh-mv-ui-top.png"), (await window.webContents.capturePage()).toPNG());
+      await window.webContents.executeJavaScript("document.querySelector('.mv-generation .submit-bar')?.scrollIntoView({block:'end'})");
+      await new Promise(resolve => setTimeout(resolve, 400));
+      await writeFile(path.join(app.getPath("temp"), "rh-mv-ui-bottom.png"), (await window.webContents.capturePage()).toPNG());
+    }
+    // Isolated smoke storage only: exercise migration and shared UI without a paid job.
+    await window.webContents.executeJavaScript(`(() => {
+      const segments = JSON.parse(localStorage.getItem('rh-runner.mv-segments.v1'));
+      const draft = structuredClone(segments[0].draft);
+      const p = key => draft.workflowSnapshot.parameters.find(item => item.key === key).id;
+      draft.parameterValues[p('87.value')] = 'shared batch smoke';
+      draft.mediaOverrides[p('34.audio')] = { enabled: true, mode: 'replace', localPath: 'smoke-audio.wav', fileName: 'smoke-audio.wav' };
+      for (const segment of segments) {
+        segment.draft.parameterValues[p('87.value')] = 'repeatable segment';
+        segment.draft.mediaOverrides[p('34.audio')] = {...draft.mediaOverrides[p('34.audio')]};
+      }
+      localStorage.setItem('rh-runner.mv-segments.v1', JSON.stringify(segments));
+      localStorage.setItem('rh-runner.mv-segments.v1.shared', JSON.stringify(draft));
+      localStorage.setItem('rh-runner.mv-segments.v1.batch', JSON.stringify([{id: 'smoke-mv-legacy', sourceId: segments[0].id, draft}]));
+    })()`);
+    await new Promise<void>(resolve => {
+      window.webContents.once('did-finish-load', () => resolve());
+      window.webContents.reload();
+    });
+    const sharedBatch = await window.webContents.executeJavaScript(`(async () => {
+      const wait = () => new Promise(resolve => setTimeout(resolve, 200));
+      for (let i = 0; i < 30 && !document.querySelector('.create-mode-tabs'); i++) {
+        [...document.querySelectorAll('button')].find(b => b.textContent.includes('新建任务'))?.click();
+        await wait();
+      }
+      const selectMode = async name => { [...document.querySelectorAll('.create-mode-tabs button')].find(b => b.textContent === name)?.click(); await wait(); };
+      const visible = () => document.querySelector('.create-mode-panel:not([hidden])');
+      for (const mode of ['数字人', 'H3 多参考', 'H3 数字人 MV']) {
+        await selectMode(mode);
+        if (visible()?.querySelectorAll('.batch-list article').length !== 1) throw new Error('Shared batch missing in ' + mode);
+      }
+      if (localStorage.getItem('rh-runner.mv-segments.v1.batch') !== null || !localStorage.getItem('rh-runner.mv-batch-migration-backup')) throw new Error('Migration backup failed');
+      const before = localStorage.getItem('rh-runner.mv-segments.v1');
+      visible().querySelector('button[aria-label="编辑批次任务"]').click(); await wait();
+      if (visible().querySelectorAll('.mv-segment').length !== 1) throw new Error('MV edit not isolated');
+      const prompt = visible().querySelector('.mv-segment textarea');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(prompt, 'edited queued snapshot');
+      prompt.dispatchEvent(new Event('input', {bubbles:true})); await wait();
+      [...visible().querySelectorAll('button')].find(b => b.textContent.includes('保存批次修改')).click(); await wait();
+      const batch = JSON.parse(localStorage.getItem('rh-runner.batch.v1'));
+      const key = batch[0].draft.workflowSnapshot.parameters.find(p => p.key === '87.value').id;
+      if (batch.length !== 1 || batch[0].id !== 'smoke-mv-legacy' || batch[0].draft.parameterValues[key] !== 'edited queued snapshot') throw new Error('MV edit duplicated or lost snapshot');
+      if (localStorage.getItem('rh-runner.mv-segments.v1') !== before) throw new Error('MV edit overwrote editor draft');
+      await selectMode('H3 多参考');
+      visible().querySelector('button[aria-label="删除批次任务"]').click(); await wait();
+      await selectMode('H3 数字人 MV');
+      if (visible().querySelectorAll('.batch-list article').length || !visible().querySelector('.batch-submit').disabled) throw new Error('Shared deletion failed');
+      const stage = () => [...visible().querySelectorAll('button')].find(b => b.textContent.includes('加入制作批次'));
+      const count = visible().querySelectorAll('.mv-segment').length;
+      stage().click(); await wait(); stage().click(); await wait();
+      const repeated = JSON.parse(localStorage.getItem('rh-runner.batch.v1'));
+      if (repeated.length !== count * 2 || stage().disabled) throw new Error('Repeated staging is still locked');
+      if ([...visible().querySelectorAll('.mv-toolbar')].some(e => /已提交|已加入批次/.test(e.textContent))) throw new Error('Obsolete segment status still visible');
+      if (repeated[0].draft.production.groupId === repeated[count].draft.production.groupId) throw new Error('Repeated production reused group');
+      for (let i = 0; i < count; i++) if (repeated[i].draft.production.segmentIndex !== i + 1) throw new Error('Segment order missing');
+      [...visible().querySelectorAll('button')].find(b => b.textContent === '清空全部输入').click(); await wait();
+      if (visible().querySelectorAll('.mv-segment').length !== 2) throw new Error('Clear did not reset segment count');
+      if ([...visible().querySelectorAll('textarea')].some(t => t.value !== '')) throw new Error('Clear left prompt text');
+      const cleared = JSON.parse(localStorage.getItem('rh-runner.mv-segments.v1'));
+      for (const segment of cleared) if (Object.values(segment.draft.mediaOverrides).some(m => m.mode === 'replace')) throw new Error('Clear left media');
+      if (JSON.parse(localStorage.getItem('rh-runner.batch.v1')).length !== repeated.length) throw new Error('Clear changed queued snapshots');
+      if ([...visible().querySelectorAll('button')].some(b => b.textContent.includes('恢复重新生成前'))) throw new Error('Removed restore feature still present');
+      return true;
+    })()`);
+    console.log(sharedBatch ? 'DESKTOP_SHARED_BATCH_PASS' : 'DESKTOP_SHARED_BATCH_FAIL');
     await backend.close();
     backend = undefined as never;
-    app.exit(connected ? 0 : 1);
+    app.exit(connected && overviewScroll && settingsScroll && themesPassed && generationLayout && mvLayout && sharedBatch ? 0 : 1);
   }
 }).catch(async error => {
   const message = error instanceof Error ? `${error.stack ?? error.message}` : String(error);
@@ -578,14 +843,16 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
 });
 
 app.on("second-instance", () => {
-  if (!mainWindow) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.focus();
+  focusExistingWindow(mainWindow, quitting);
 });
 
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 app.on("before-quit", event => {
   if (!backend) return;
   event.preventDefault();
-  void backend.close().finally(() => { backend = undefined as never; app.exit(0); });
+  if (quitting) return;
+  quitting = true;
+  void backend.close().catch(error => {
+    console.error("RunningHub shutdown failed", error);
+  }).finally(() => { backend = undefined as never; app.exit(0); });
 });

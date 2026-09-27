@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,9 +9,9 @@ import {
 } from "../src/core/index.js";
 import { NullLogger } from "../src/core/logger.js";
 
-async function waitFor(predicate: () => boolean, timeoutMs = 3_000): Promise<void> {
+async function waitFor(predicate: () => boolean | Promise<boolean>, timeoutMs = 3_000): Promise<void> {
   const started = Date.now();
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() - started > timeoutMs) throw new Error("Timed out waiting for condition");
     await new Promise(resolve => setTimeout(resolve, 5));
   }
@@ -380,7 +380,15 @@ test("cancelling an active download aborts it, removes the part file, and stays 
     await waitFor(() => backend.jobs.get(job.id)?.status === "DOWNLOADING");
     await backend.scheduler.cancel(job.id);
     await waitFor(() => aborted);
-    await new Promise(resolve => setTimeout(resolve, 20));
+    await waitFor(async () => {
+      try {
+        await stat(path.join(dir, `job_${job.id}_01.mp4.part`));
+        return false;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+        throw error;
+      }
+    });
     assert.equal(backend.jobs.get(job.id)?.status, "CANCELLED");
     await assert.rejects(() => import("node:fs/promises").then(fs => fs.stat(path.join(dir, `job_${job.id}_01.mp4.part`))));
   } finally { await backend.close(); await rm(dir, { recursive: true, force: true }); }

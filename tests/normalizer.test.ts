@@ -28,5 +28,5 @@ test("response normalizer accepts task, status, error, result, and usage variant
 test("upload normalizer prefers RunningHub workflow fileName and supports documented URL", () => {
   assert.equal(extractUploadValue({ code: 0, data: { fileName: "input/a.png", download_url: "https://cdn/a.png" } }), "input/a.png");
   assert.equal(extractUploadValue({ code: 0, data: { filename: "input/b.png" } }), "input/b.png");
-  assert.equal(extractUploadValue({ code: 0, data: { download_url: "https://cdn/c.png" } }), "https://cdn/c.png");
+  assert.equal(extractUploadValue({ code: 0, data: { download_url: "https://cdn/c.png" } }), undefined);
 });

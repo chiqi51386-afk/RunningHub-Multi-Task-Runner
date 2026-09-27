@@ -14,6 +14,7 @@ import type { AccountState, Job, JobError, RunningHubConfig } from "../types.js"
 
 export class Scheduler {
   private running = false;
+  isRunning(): boolean { return this.running; }
   private scheduling = false;
   private readonly activeJobs = new Set<string>();
   private readonly activePromises = new Set<Promise<void>>();
@@ -365,9 +366,13 @@ export class Scheduler {
           job = this.jobs.transition(job.id, "SUBMITTING", { submitStartedAt: Date.now() });
         }
         const nodes = buildNodeInfoList(job.profileSnapshot, job.parameters, job.media);
+        // Persist the JSON-safe payload before any network request. Never store credentials.
+        const submission = JSON.parse(JSON.stringify({ recordedAt: Date.now(), workflowId: job.runningHubWorkflowId,
+          nodeInfoList: nodes, ...(job.instanceType === "plus" ? { instanceType: "plus" } : {}) })) as NonNullable<Job["submission"]>;
+        job = this.db.updateJob(job.id, { submission });
         let taskId: string;
         try {
-          taskId = await client.runWorkflow(job.runningHubWorkflowId, nodes, { instanceType: job.instanceType });
+          taskId = await client.runWorkflow(submission.workflowId, submission.nodeInfoList, { instanceType: submission.instanceType });
         } catch (error) {
           await this.handleSubmitFailure(job, error);
           return;
@@ -590,7 +595,6 @@ export class Scheduler {
     const fail = (code: JobError["code"], message: string): JobError => ({
       code, message, phase: "recovery", retryable: false, accountRelated: false, safeToReassign: false,
     });
-    if (!this.db.getWorkflow(job.workflowId)) return fail("WORKFLOW_VALIDATION", "Recovery blocked: workflow no longer exists.");
     if (!job.profileSnapshot || !Array.isArray(job.profileSnapshot.parameters) ||
       job.profileSnapshot.parameters.some(parameter => !parameter.id || !parameter.nodeId || !parameter.fieldName)) {
       return fail("WORKFLOW_VALIDATION", "Recovery blocked: profile snapshot is incomplete.");

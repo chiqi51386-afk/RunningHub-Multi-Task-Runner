@@ -7,32 +7,12 @@
     "version": "0.1.0"
   },
   "workflow": {
-    "name": "MiniMaxH3-金鱼多参考优化版",
-    "runningHubWorkflowId": "2093983063180054529",
+    "name": "金鱼多参优化版",
+    "runningHubWorkflowId": "2104088262948556801",
     "apiJson": {
-      "14": {
-        "inputs": {
-          "audio": "",
-          "audioUI": ""
-        },
-        "class_type": "LoadAudio",
-        "_meta": {
-          "title": "Load Audio"
-        }
-      },
-      "15": {
-        "inputs": {
-          "audio": "",
-          "audioUI": ""
-        },
-        "class_type": "LoadAudio",
-        "_meta": {
-          "title": "Load Audio"
-        }
-      },
       "19": {
         "inputs": {
-          "image": ""
+          "image": "None"
         },
         "class_type": "LoadImage",
         "_meta": {
@@ -41,28 +21,11 @@
       },
       "23": {
         "inputs": {
-          "image": ""
+          "image": "None"
         },
         "class_type": "LoadImage",
         "_meta": {
           "title": "Load Image"
-        }
-      },
-      "27": {
-        "inputs": {
-          "video": "",
-          "force_rate": 0,
-          "force_size": "Disabled",
-          "custom_width": 0,
-          "custom_height": 0,
-          "frame_load_cap": 0,
-          "skip_first_frames": 0,
-          "select_every_nth": 1,
-          "format": "AnimateDiff"
-        },
-        "class_type": "VHS_LoadVideo",
-        "_meta": {
-          "title": "Load Video (Upload) 🎥🅥🅗🅢"
         }
       },
       "36": {
@@ -96,26 +59,16 @@
       },
       "43": {
         "inputs": {
-          "image": ""
+          "image": "None"
         },
         "class_type": "LoadImage",
         "_meta": {
           "title": "Load Image"
         }
       },
-      "48": {
-        "inputs": {
-          "audio": "",
-          "audioUI": ""
-        },
-        "class_type": "LoadAudio",
-        "_meta": {
-          "title": "Load Audio"
-        }
-      },
       "49": {
         "inputs": {
-          "image": ""
+          "image": "None"
         },
         "class_type": "LoadImage",
         "_meta": {
@@ -124,7 +77,7 @@
       },
       "50": {
         "inputs": {
-          "image": ""
+          "image": "None"
         },
         "class_type": "LoadImage",
         "_meta": {
@@ -133,7 +86,7 @@
       },
       "51": {
         "inputs": {
-          "image": ""
+          "image": "None"
         },
         "class_type": "LoadImage",
         "_meta": {
@@ -143,7 +96,7 @@
       "53": {
         "inputs": {
           "lora_name": "minimax_h3_turbo_v4_step600_ema_pruned_comfyui.safetensors",
-          "strength_model": 1,
+          "strength_model": 1.0000000000000002,
           "model": [
             "128",
             0
@@ -201,7 +154,7 @@
       "128": {
         "inputs": {
           "lora_name": "MysticXXX_MMH3-V1.safetensors",
-          "strength_model": 0.5,
+          "strength_model": 0.5000000000000001,
           "model": [
             "58",
             0
@@ -300,6 +253,33 @@
           "title": "Load Diffusion Model"
         }
       },
+      "199": {
+        "inputs": {
+          "image": "None"
+        },
+        "class_type": "LoadImage",
+        "_meta": {
+          "title": "Load Image"
+        }
+      },
+      "200": {
+        "inputs": {
+          "image": "None"
+        },
+        "class_type": "LoadImage",
+        "_meta": {
+          "title": "Load Image"
+        }
+      },
+      "201": {
+        "inputs": {
+          "image": "None"
+        },
+        "class_type": "LoadImage",
+        "_meta": {
+          "title": "Load Image"
+        }
+      },
       "214": {
         "inputs": {
           "frame_rate": 24,
@@ -386,7 +366,7 @@
       },
       "252": {
         "inputs": {
-          "aspect_ratio": "16:9 (Widescreen)",
+          "aspect_ratio": "9:16 (Portrait Widescreen)",
           "megapixels": 0.5,
           "multiple": 32
         },
@@ -438,7 +418,7 @@
       },
       "256": {
         "inputs": {
-          "noise_seed": 629900698231524
+          "noise_seed": 1008987755858597
         },
         "class_type": "RandomNoise",
         "_meta": {
@@ -447,7 +427,7 @@
       },
       "259": {
         "inputs": {
-          "value": 10
+          "value": 8
         },
         "class_type": "PrimitiveFloat",
         "_meta": {
@@ -467,15 +447,6 @@
         "class_type": "BasicScheduler",
         "_meta": {
           "title": "BasicScheduler"
-        }
-      },
-      "263": {
-        "inputs": {
-          "text": ""
-        },
-        "class_type": "Text",
-        "_meta": {
-          "title": "Text"
         }
       },
       "264": {
@@ -508,7 +479,7 @@
       "265": {
         "inputs": {
           "prompt": [
-            "263",
+            "327",
             0
           ],
           "width": [
@@ -560,20 +531,16 @@
             "23",
             0
           ],
-          "ref_videos.ref_video_0": [
-            "27",
+          "ref_images.ref_image_6": [
+            "199",
             0
           ],
-          "ref_audios.ref_audio_0": [
-            "48",
+          "ref_images.ref_image_7": [
+            "200",
             0
           ],
-          "ref_audios.ref_audio_1": [
-            "14",
-            0
-          ],
-          "ref_audios.ref_audio_2": [
-            "15",
+          "ref_images.ref_image_8": [
+            "201",
             0
           ]
         },
@@ -584,7 +551,7 @@
       },
       "283": {
         "inputs": {
-          "value": 1.5
+          "value": 1.5000000000000002
         },
         "class_type": "easy float",
         "_meta": {
@@ -631,69 +598,126 @@
         "_meta": {
           "title": "忽略多组 孤海"
         }
+      },
+      "323": {
+        "inputs": {
+          "prompt": [
+            "325",
+            0
+          ],
+          "skill": "auto",
+          "duration": [
+            "259",
+            0
+          ],
+          "llm_model": "Qwen3.8-27B-Q4_K_M.gguf",
+          "vision_model": "mmproj-F16.gguf",
+          "think_mode": false,
+          "reasoning_effort": "medium",
+          "seed": 705213121227446,
+          "max_tokens": 8192,
+          "video_sample_frames_per_sec": 2,
+          "force_unload_model": true,
+          "reference_images.reference_image_0": [
+            "51",
+            0
+          ],
+          "reference_images.reference_image_1": [
+            "49",
+            0
+          ],
+          "reference_images.reference_image_2": [
+            "50",
+            0
+          ],
+          "reference_images.reference_image_3": [
+            "43",
+            0
+          ],
+          "reference_images.reference_image_4": [
+            "19",
+            0
+          ],
+          "reference_images.reference_image_5": [
+            "23",
+            0
+          ],
+          "reference_images.reference_image_6": [
+            "199",
+            0
+          ],
+          "reference_images.reference_image_7": [
+            "200",
+            0
+          ],
+          "reference_images.reference_image_8": [
+            "201",
+            0
+          ]
+        },
+        "class_type": "QwenH3PromptLocal",
+        "_meta": {
+          "title": "生成词优化"
+        }
+      },
+      "324": {
+        "inputs": {
+          "preview": "",
+          "source": [
+            "327",
+            0
+          ]
+        },
+        "class_type": "PreviewAny",
+        "_meta": {
+          "title": "实际生成词预览"
+        }
+      },
+      "325": {
+        "inputs": {
+          "text": ""
+        },
+        "class_type": "Text",
+        "_meta": {
+          "title": "原始生成词输入（始终启用）"
+        }
+      },
+      "327": {
+        "inputs": {
+          "boolean": [
+            "328",
+            0
+          ],
+          "on_true": [
+            "323",
+            0
+          ],
+          "on_false": [
+            "325",
+            0
+          ]
+        },
+        "class_type": "easy ifElse",
+        "_meta": {
+          "title": "生成词选择"
+        }
+      },
+      "328": {
+        "inputs": {
+          "value": false
+        },
+        "class_type": "easy boolean",
+        "_meta": {
+          "title": "中文生成词优化"
+        }
       }
     },
-    "workflowHash": "34f1dcd3fca6d338b90787e681cb423cf1d87cd2ee03b3ddf1cdf9bd021a0635"
+    "workflowHash": "1236ba47850fd091656a9f2508c38e2f2eb3f1f548c4bc60b3c806b7444ad620",
+    "sourceUrl": "https://www.runninghub.cn/workflow/2104088262948556801"
   },
   "profile": {
-    "name": "MiniMaxH3-金鱼多参考优化版",
+    "name": "金鱼多参优化版",
     "parameters": [
-      {
-        "key": "14.audio",
-        "nodeId": "14",
-        "fieldName": "audio",
-        "classType": "LoadAudio",
-        "nodeTitle": "Load Audio",
-        "valueType": "audio",
-        "semanticType": "audio",
-        "defaultValue": "",
-        "confidence": 0.96,
-        "showEnableToggle": true,
-        "id": "audio",
-        "visible": false
-      },
-      {
-        "key": "14.audioUI",
-        "nodeId": "14",
-        "fieldName": "audioUI",
-        "classType": "LoadAudio",
-        "nodeTitle": "Load Audio",
-        "valueType": "string",
-        "semanticType": "unknown",
-        "defaultValue": "",
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "14_audioUI",
-        "visible": false
-      },
-      {
-        "key": "15.audio",
-        "nodeId": "15",
-        "fieldName": "audio",
-        "classType": "LoadAudio",
-        "nodeTitle": "Load Audio",
-        "valueType": "audio",
-        "semanticType": "audio",
-        "defaultValue": "",
-        "confidence": 0.96,
-        "showEnableToggle": true,
-        "id": "audio_2",
-        "visible": false
-      },
-      {
-        "key": "15.audioUI",
-        "nodeId": "15",
-        "fieldName": "audioUI",
-        "classType": "LoadAudio",
-        "nodeTitle": "Load Audio",
-        "valueType": "string",
-        "semanticType": "unknown",
-        "defaultValue": "",
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "15_audioUI",
-        "visible": false
-      },
       {
         "key": "19.image",
         "nodeId": "19",
@@ -721,132 +745,6 @@
         "showEnableToggle": true,
         "id": "image_2",
         "visible": true
-      },
-      {
-        "key": "27.video",
-        "nodeId": "27",
-        "fieldName": "video",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "video",
-        "semanticType": "video",
-        "defaultValue": "",
-        "confidence": 0.96,
-        "showEnableToggle": true,
-        "id": "video",
-        "visible": false
-      },
-      {
-        "key": "27.force_rate",
-        "nodeId": "27",
-        "fieldName": "force_rate",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 0,
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_force_rate",
-        "visible": false
-      },
-      {
-        "key": "27.force_size",
-        "nodeId": "27",
-        "fieldName": "force_size",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "string",
-        "semanticType": "unknown",
-        "defaultValue": "Disabled",
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_force_size",
-        "visible": false
-      },
-      {
-        "key": "27.custom_width",
-        "nodeId": "27",
-        "fieldName": "custom_width",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 0,
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_custom_width",
-        "visible": false
-      },
-      {
-        "key": "27.custom_height",
-        "nodeId": "27",
-        "fieldName": "custom_height",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 0,
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_custom_height",
-        "visible": false
-      },
-      {
-        "key": "27.frame_load_cap",
-        "nodeId": "27",
-        "fieldName": "frame_load_cap",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 0,
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_frame_load_cap",
-        "visible": false
-      },
-      {
-        "key": "27.skip_first_frames",
-        "nodeId": "27",
-        "fieldName": "skip_first_frames",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "integer",
-        "semanticType": "frames",
-        "defaultValue": 0,
-        "confidence": 0.74,
-        "showEnableToggle": false,
-        "id": "frames",
-        "visible": false
-      },
-      {
-        "key": "27.select_every_nth",
-        "nodeId": "27",
-        "fieldName": "select_every_nth",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 1,
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_select_every_nth",
-        "visible": false
-      },
-      {
-        "key": "27.format",
-        "nodeId": "27",
-        "fieldName": "format",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "string",
-        "semanticType": "unknown",
-        "defaultValue": "AnimateDiff",
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_format",
-        "visible": false
       },
       {
         "key": "36.vae_name",
@@ -931,34 +829,6 @@
         "showEnableToggle": true,
         "id": "image_3",
         "visible": true
-      },
-      {
-        "key": "48.audio",
-        "nodeId": "48",
-        "fieldName": "audio",
-        "classType": "LoadAudio",
-        "nodeTitle": "Load Audio",
-        "valueType": "audio",
-        "semanticType": "audio",
-        "defaultValue": "",
-        "confidence": 0.96,
-        "showEnableToggle": true,
-        "id": "audio_3",
-        "visible": false
-      },
-      {
-        "key": "48.audioUI",
-        "nodeId": "48",
-        "fieldName": "audioUI",
-        "classType": "LoadAudio",
-        "nodeTitle": "Load Audio",
-        "valueType": "string",
-        "semanticType": "unknown",
-        "defaultValue": "",
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "48_audioUI",
-        "visible": false
       },
       {
         "key": "49.image",
@@ -1420,7 +1290,7 @@
         "nodeTitle": "RandomNoise",
         "valueType": "integer",
         "semanticType": "seed",
-        "defaultValue": 629900698231524,
+        "defaultValue": 1008987755858597,
         "confidence": 0.96,
         "showEnableToggle": false,
         "id": "seed",
@@ -1434,7 +1304,7 @@
         "nodeTitle": "视频时长（秒）",
         "valueType": "integer",
         "semanticType": "duration",
-        "defaultValue": 10,
+        "defaultValue": 8,
         "confidence": 1,
         "showEnableToggle": false,
         "id": "duration",
@@ -1485,8 +1355,8 @@
         "visible": false
       },
       {
-        "key": "263.text",
-        "nodeId": "263",
+        "key": "325.text",
+        "nodeId": "325",
         "fieldName": "text",
         "classType": "Text",
         "nodeTitle": "Text",
@@ -1496,7 +1366,9 @@
         "confidence": 0.86,
         "showEnableToggle": false,
         "id": "prompt",
-        "visible": true
+        "visible": true,
+        "submitDefault": true,
+        "label": "生成词"
       },
       {
         "key": "264.frame_rate",
@@ -1695,135 +1567,24 @@
         "showEnableToggle": false,
         "id": "289_step",
         "visible": false
+      },
+      {
+        "id": "chinese_prompt_optimization",
+        "key": "328.value",
+        "nodeId": "328",
+        "fieldName": "value",
+        "classType": "easy boolean",
+        "nodeTitle": "中文生成词优化",
+        "label": "中文生成词优化",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "submitDefault": true,
+        "visible": true,
+        "confidence": 1
       }
     ],
     "genericParameters": [
-      {
-        "key": "14.audioUI",
-        "nodeId": "14",
-        "fieldName": "audioUI",
-        "classType": "LoadAudio",
-        "nodeTitle": "Load Audio",
-        "valueType": "string",
-        "semanticType": "unknown",
-        "defaultValue": "",
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "14_audioUI",
-        "visible": false
-      },
-      {
-        "key": "15.audioUI",
-        "nodeId": "15",
-        "fieldName": "audioUI",
-        "classType": "LoadAudio",
-        "nodeTitle": "Load Audio",
-        "valueType": "string",
-        "semanticType": "unknown",
-        "defaultValue": "",
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "15_audioUI",
-        "visible": false
-      },
-      {
-        "key": "27.force_rate",
-        "nodeId": "27",
-        "fieldName": "force_rate",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 0,
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_force_rate",
-        "visible": false
-      },
-      {
-        "key": "27.force_size",
-        "nodeId": "27",
-        "fieldName": "force_size",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "string",
-        "semanticType": "unknown",
-        "defaultValue": "Disabled",
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_force_size",
-        "visible": false
-      },
-      {
-        "key": "27.custom_width",
-        "nodeId": "27",
-        "fieldName": "custom_width",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 0,
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_custom_width",
-        "visible": false
-      },
-      {
-        "key": "27.custom_height",
-        "nodeId": "27",
-        "fieldName": "custom_height",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 0,
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_custom_height",
-        "visible": false
-      },
-      {
-        "key": "27.frame_load_cap",
-        "nodeId": "27",
-        "fieldName": "frame_load_cap",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 0,
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_frame_load_cap",
-        "visible": false
-      },
-      {
-        "key": "27.select_every_nth",
-        "nodeId": "27",
-        "fieldName": "select_every_nth",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 1,
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_select_every_nth",
-        "visible": false
-      },
-      {
-        "key": "27.format",
-        "nodeId": "27",
-        "fieldName": "format",
-        "classType": "VHS_LoadVideo",
-        "nodeTitle": "Load Video (Upload) 🎥🅥🅗🅢",
-        "valueType": "string",
-        "semanticType": "unknown",
-        "defaultValue": "AnimateDiff",
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "27_format",
-        "visible": false
-      },
       {
         "key": "36.vae_name",
         "nodeId": "36",
@@ -1892,20 +1653,6 @@
         "confidence": 0.2,
         "showEnableToggle": false,
         "id": "38_device",
-        "visible": false
-      },
-      {
-        "key": "48.audioUI",
-        "nodeId": "48",
-        "fieldName": "audioUI",
-        "classType": "LoadAudio",
-        "nodeTitle": "Load Audio",
-        "valueType": "string",
-        "semanticType": "unknown",
-        "defaultValue": "",
-        "confidence": 0.2,
-        "showEnableToggle": false,
-        "id": "48_audioUI",
         "visible": false
       },
       {
@@ -2355,6 +2102,21 @@
         "showEnableToggle": false,
         "id": "289_step",
         "visible": false
+      },
+      {
+        "id": "chinese_prompt_optimization",
+        "key": "328.value",
+        "nodeId": "328",
+        "fieldName": "value",
+        "classType": "easy boolean",
+        "nodeTitle": "中文生成词优化",
+        "label": "中文生成词优化",
+        "valueType": "boolean",
+        "semanticType": "unknown",
+        "defaultValue": false,
+        "submitDefault": true,
+        "visible": true,
+        "confidence": 1
       }
     ],
     "needsReview": false,
@@ -2384,7 +2146,7 @@
     ],
     "functionDescription": "MiniMax H3 多参考图生视频。可用多张图片约束人物、场景和视觉元素，并通过二次采样提升输出清晰度。",
     "usageInstructions": "填写生成词并按需上传参考图片；先设置画面比例和视频时长，再设置一采分辨率与二采放大倍数。放大倍数越高，生成与下载耗时通常越长。",
-    "revision": 5
+    "revision": 6
   },
   "compatibility": {
     "profileSchemaVersion": 1,

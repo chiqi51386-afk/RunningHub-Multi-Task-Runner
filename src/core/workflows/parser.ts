@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { mapReferenceMedia } from "./mediaMapping.js";
 import type { WorkflowOutput, WorkflowParameter, WorkflowValueType } from "../types.js";
 
 export interface ParsedWorkflow {
@@ -62,6 +63,7 @@ export function parseApiWorkflow(value: unknown): ParsedWorkflow {
   if (validNodes === 0) {
     throw new Error("Workflow has no API-format nodes with an inputs object.");
   }
+  mapReferenceMedia(raw, parameters);
   outputs.sort((a, b) => a.stage - b.stage || Number(a.nodeId) - Number(b.nodeId));
   return { raw, parameters, outputs, workflowHash: hashWorkflow(raw) };
 }
