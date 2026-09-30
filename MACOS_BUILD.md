@@ -1,5 +1,10 @@
 # Apple Silicon test build (0.1.46)
 
+Intel build added in 0.1.47: run **macOS Intel ZIP** on `macos-15-intel`.
+It checks x86_64 executable/native SQLite architecture and runs the same packaged
+smoke tests. Download `RunningHub-Runner-v0.1.47-macos-x64.zip` from its Actions
+artifact. Signing, notarization and retention limitations below also apply.
+
 Personal private repository: `chiqi51386-afk/RunningHub-Multi-Task-Runner`.
 Run **macOS Apple Silicon ZIP** in Actions. The workflow uses a native arm64
 `macos-15` runner and uploads a ZIP and SHA-256 checksum as a private Actions
