@@ -1,6 +1,6 @@
 {
   "name": "runninghub-multi-task-runner-core",
-  "version": "0.1.45",
+  "version": "0.1.46",
   "private": true,
   "type": "module",
   "description": "RunningHub 多工作流、多任务、多账号桌面客户端",
@@ -30,6 +30,7 @@
     "desktop:start": "npm run desktop:build && npm run desktop:launch",
     "desktop:smoke": "npm run desktop:build && npm run native:electron && electron dist/src/desktop/main.js --smoke",
     "release:win": "npm run desktop:build && npm run native:electron && electron-builder --win dir --x64 && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.ps1",
+    "release:mac": "npm run desktop:build && electron-builder --mac zip --arm64 --publish never",
     "licenses:generate": "node scripts/generate-third-party-licenses.mjs",
     "licenses:check": "node scripts/generate-third-party-licenses.mjs --check",
     "package:verify": "node scripts/verify-package-boundaries.mjs"
@@ -67,6 +68,13 @@
       "README.md",
       "THIRD_PARTY_LICENSES/**/*"
     ],
+    "mac": {
+      "target": [{ "target": "zip", "arch": ["arm64"] }],
+      "artifactName": "RunningHub-Runner-v${version}-macos-${arch}.${ext}",
+      "category": "public.app-category.video",
+      "identity": "-",
+      "notarize": false
+    },
     "win": {
       "target": [
         {

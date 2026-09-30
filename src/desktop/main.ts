@@ -847,6 +847,15 @@ app.on("second-instance", () => {
 });
 
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
+// macOS keeps the process alive after closing its last window. Reopen the UI
+// from the Dock without starting a second backend or scheduler.
+app.on("activate", () => {
+  if (quitting || !backend) return;
+  if (mainWindow && !mainWindow.isDestroyed()) focusExistingWindow(mainWindow, quitting);
+  else void createWindow().then(window => { mainWindow = window; }).catch(error => {
+    console.error("Failed to reopen macOS window", error);
+  });
+});
 app.on("before-quit", event => {
   if (!backend) return;
   event.preventDefault();
