@@ -2,13 +2,14 @@ import type { JobError, JobErrorCode, JobPhase } from "../types.js";
 import { asObject, normalizeRunningHubResponse } from "./normalizer.js";
 
 const SECRET_PATTERNS = [
+  /("(?:api[_-]?key|authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret)"\s*:\s*)"(?:\\.|[^"\\])*"/gi,
   /(api[_-]?key\s*[=:]\s*)[^&\s,}\]]+/gi,
   /(authorization\s*:\s*bearer\s+)[A-Za-z0-9._-]+/gi,
   /(bearer\s+)[A-Za-z0-9._-]+/gi,
 ];
 
 export function maskSecrets(value: string): string {
-  return SECRET_PATTERNS.reduce((text, pattern) => text.replace(pattern, "$1****"), value);
+  return SECRET_PATTERNS.reduce((text, pattern, index) => text.replace(pattern, index === 0 ? '$1"****"' : "$1****"), value);
 }
 
 export class RunningHubError extends Error {

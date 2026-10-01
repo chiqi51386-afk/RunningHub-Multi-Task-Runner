@@ -318,6 +318,7 @@ export interface JobResult {
 }
 
 export interface Job extends JobSnapshot {
+  cancelRequestedAt?: number;
   submission?: { recordedAt: number; workflowId: string; nodeInfoList: NodeInfo[]; instanceType?: "plus" };
   accountId?: string;
   remoteTaskId?: string;

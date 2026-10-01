@@ -1,6 +1,6 @@
 # RunningHub Multi-Task Runner
 
-一个面向 RunningHub 海外站的 Windows 桌面客户端，用来管理多个工作流、账号和生成任务。当前版本：**v0.1.45**。
+一个面向 RunningHub 海外站的 Windows 桌面客户端，用来管理多个工作流、账号和生成任务。当前源码版本：**v0.1.49**。
 
 ## 主要功能
 
@@ -15,7 +15,7 @@
 ## 直接使用 Windows 版
 
 1. 打开 [Releases](https://github.com/chiqi51386-afk/RunningHub-Multi-Task-Runner/releases)。
-2. 下载 `RunningHub-Runner-v0.1.45-windows-x64.zip`（云端构建成功后提供）。
+2. 下载 `RunningHub-Runner-v0.1.49-windows-x64.zip`（云端构建成功后提供）。
 3. 解压全部文件，不能只把 EXE 单独拖出来。
 4. 双击 `RunningHub Runner.exe`。
 5. 添加 RunningHub API Key，导入或选择工作流，然后创建任务。
@@ -45,7 +45,7 @@
 
 ## 数据和安全说明
 
-- API Key 按当前产品要求以明文保存在本机 SQLite 数据库中。
+- 桌面 API Key 使用操作系统 safeStorage 加密；首次启动新版自动事务迁移旧明文 Key，验证失败则回滚。跨电脑或系统用户复制数据库后可能需要重新填写 Key；旧版本不能读取新版密文。旧备份及数据库残留页可能仍有明文，不会自动删除。
 - 请勿把数据库、API Key、日志或包含隐私的截图上传到 GitHub。
 - 发布源码和可执行压缩包不包含账号、API Key、历史任务、下载文件或本地测试素材。
 - 如果提交状态未知，软件不会自动重复提交，避免重复扣费。

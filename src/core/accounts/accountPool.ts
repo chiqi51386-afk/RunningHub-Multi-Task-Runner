@@ -2,6 +2,7 @@ import type { CoreDatabase } from "../database.js";
 import type { BackendEvents } from "../events.js";
 import type { Logger } from "../logger.js";
 import { RunningHubError } from "../runninghub/errors.js";
+import { SecretStorageError } from "../secureSecrets.js";
 import type { Account, AccountWithSecret, RunningHubClientLike, RunningHubConfig } from "../types.js";
 
 export type ClientFactory = (apiKey: string) => RunningHubClientLike;
@@ -111,7 +112,7 @@ export class AccountPool {
       });
     } catch (error) {
       const current = this.db.getAccount(id)!;
-      if (error instanceof Error && /decrypt|safeStorage|Encrypted API key|not plaintext|API key storage/i.test(error.message)) {
+      if (error instanceof SecretStorageError || (error instanceof Error && /decrypt|safeStorage|Encrypted API key|not plaintext|API key storage/i.test(error.message))) {
         account = this.db.updateAccount(id, {
           state: current.currentJobId ? "BUSY" : "SECRET_UNREADABLE",
           lastErrorAt: Date.now(), lastCheckedAt: Date.now(),

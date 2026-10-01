@@ -233,7 +233,9 @@ export class RunningHubClient {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(new Error(`${options.phase} timeout`)), options.timeoutMs);
       try {
-        const response = await this.fetchImpl(url, { ...init, signal: controller.signal, redirect: "follow" });
+        // These API endpoints are fixed. A 307/308 could otherwise forward
+        // the account/cancel JSON body (which contains the key) off-origin.
+        const response = await this.fetchImpl(url, { ...init, signal: controller.signal, redirect: "error" });
         const bodyText = await response.text();
         let parsed: unknown;
         try { parsed = bodyText ? JSON.parse(bodyText) : {}; }

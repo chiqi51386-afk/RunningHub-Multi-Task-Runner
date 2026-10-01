@@ -89,6 +89,7 @@ export type JobStatus =
   | "DOWNLOADING" | "COMPLETED" | "FAILED" | "RETRY_WAIT" | "CANCELLED";
 
 export interface JobView {
+  cancelRequestedAt?: number;
   submission?: { recordedAt: number; workflowId: string; nodeInfoList: Array<{ nodeId: string; fieldName: string; fieldValue: unknown }>; instanceType?: "plus" };
   id: string;
   workflowName: string;

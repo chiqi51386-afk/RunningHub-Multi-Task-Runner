@@ -9,6 +9,11 @@ import { Workflows } from "../dist/src/core/workflows/workflows.js";
 const databasePath = process.argv[2];
 const outputDirectory = path.resolve(process.argv[3] ?? "bundled-workflows");
 if (!databasePath) throw new Error("Usage: node scripts/prepare-release-data.mjs <database-path> [output-directory]");
+// Legacy maintenance tool, never part of the normal release build. Fail before opening
+// the database unless the operator explicitly acknowledges its destructive behavior.
+if (!process.argv.includes("--confirm-clear-jobs-and-reset-accounts")) {
+  throw new Error("This legacy tool deletes all jobs and resets account occupancy. Back up the database and stop the app first; then explicitly pass --confirm-clear-jobs-and-reset-accounts. Normal packaging does not need this tool.");
+}
 
 const expected = new Map([
   ["2104088262948556801", "minimax-h3-multi-reference.rhworkflow.json"],

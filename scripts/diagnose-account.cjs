@@ -1,6 +1,6 @@
 const path = require("node:path");
 const fs = require("node:fs");
-const { app } = require("electron");
+const { app, safeStorage } = require("electron");
 const Database = require("better-sqlite3");
 
 const diagnosticPath = path.join(process.cwd(), "work", "account-diagnostic.json");
@@ -11,7 +11,8 @@ function emit(value) {
 }
 
 app.whenReady().then(async () => {
-  const databasePath = path.join(app.getPath("userData"), "runninghub.sqlite");
+  const { SystemSecretStore } = await import("../dist/src/core/secureSecrets.js");
+  const databasePath = path.join(app.getPath("appData"), "runninghub-multi-task-runner-core", "runninghub.sqlite");
   const database = new Database(databasePath, { readonly: true, fileMustExist: true });
   try {
     const row = database.prepare(`
@@ -22,8 +23,7 @@ app.whenReady().then(async () => {
       LIMIT 1
     `).get();
     if (!row) throw new Error("没有可检测的启用账号。");
-    const apiKey = Buffer.isBuffer(row.encrypted_key) ? row.encrypted_key.toString("utf8") : String(row.encrypted_key);
-    if (!/^[\x20-\x7e]+$/.test(apiKey)) throw new Error("该账号仍是旧版加密数据，请重新录入 API Key。");
+    const apiKey = new SystemSecretStore(safeStorage).decrypt(row.encrypted_key);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new Error("请求超过 20 秒")), 20_000);
     const startedAt = Date.now();

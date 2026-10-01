@@ -23,6 +23,7 @@ for (const file of readdirSync("bundled-workflows").filter(file => file.endsWith
     const prompts = profile.parameters.filter(p => p.visible !== false && p.semanticType === "prompt");
     assert.equal(prompts.length, 1);
     const media = visibleMedia(view, mode);
+    if (mode === "h3-multi-reference") media.forEach((p, index) => assert.equal(p.referenceIndex === undefined ? index + 1 : p.referenceIndex + 1, index + 1, `Image label mismatch: ${p.key}`));
     // Verify visible content loaders reach an output through the exported graph.
     const downstream = new Map<string, Set<string>>();
     const visit = (value: unknown, consumer: string): void => {
@@ -45,7 +46,7 @@ for (const file of readdirSync("bundled-workflows").filter(file => file.endsWith
     }
     if (mode === "h3-multi-reference") assert.deepEqual(media.map(p => p.nodeId), file.includes("selflift")
       ? ["150", "164", "239", "241", "240", "238"] : ["51", "49", "50", "43", "19", "23"]);
-    for (const count of [0, 1, media.length]) {
+    for (const count of Array.from({ length: media.length + 1 }, (_, index) => index)) {
       const draft = createDraft(view);
       draft.parameterValues[prompts[0]!.id] = "MAPPING_AUDIT_UNIQUE_PROMPT";
       media.slice(0, count).forEach((p, index) => { draft.mediaOverrides[p.id] = { enabled: true, mode: "replace", localPath: `slot-${index + 1}` }; });

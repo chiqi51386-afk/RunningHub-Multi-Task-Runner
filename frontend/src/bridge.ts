@@ -69,7 +69,7 @@ export interface RunningHubRendererBridge {
     stop(): Promise<void>;
   };
   external: {
-    openApiKeys(): Promise<void>;
+    copyApiKeysUrl(): Promise<void>;
   };
   updates: {
     check(): Promise<UpdateInfo>;

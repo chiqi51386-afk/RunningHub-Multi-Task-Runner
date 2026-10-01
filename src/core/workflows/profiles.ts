@@ -90,12 +90,16 @@ function bindMediaControls(parameters: WorkflowProfileParameter[]): void {
 
 export function validateProfile(profile: WorkflowProfile): void {
   const ids = new Set<string>();
+  const targets = new Set<string>();
   for (const parameter of profile.parameters) {
     if (!parameter.id || !parameter.nodeId || !parameter.fieldName) {
       throw new Error("Workflow profile parameters require id, nodeId, and fieldName.");
     }
     if (ids.has(parameter.id)) throw new Error(`Duplicate workflow profile parameter id: ${parameter.id}`);
     ids.add(parameter.id);
+    const target = JSON.stringify([parameter.nodeId, parameter.fieldName]);
+    if (targets.has(target)) throw new Error(`Duplicate workflow parameter target: ${parameter.nodeId}.${parameter.fieldName}`);
+    targets.add(target);
   }
   for (const parameter of profile.parameters) {
     if (!parameter.mediaControl) continue;
@@ -108,16 +112,16 @@ export function validateProfile(profile: WorkflowProfile): void {
 
 export function validateProfileAgainstWorkflow(profile: WorkflowProfile, raw: Record<string, unknown>): void {
   for (const parameter of profile.parameters) {
-    const node = raw[parameter.nodeId];
+    const node = Object.hasOwn(raw, parameter.nodeId) ? raw[parameter.nodeId] : undefined;
     const inputs = node && typeof node === "object" && !Array.isArray(node)
       ? (node as Record<string, unknown>).inputs
       : undefined;
-    if (!inputs || typeof inputs !== "object" || Array.isArray(inputs) || !(parameter.fieldName in inputs)) {
+    if (!inputs || typeof inputs !== "object" || Array.isArray(inputs) || !Object.hasOwn(inputs, parameter.fieldName)) {
       throw new Error(`工作流包含失效参数映射：${parameter.nodeId}.${parameter.fieldName}`);
     }
   }
   for (const output of profile.outputs) {
-    const node = raw[output.nodeId];
+    const node = Object.hasOwn(raw, output.nodeId) ? raw[output.nodeId] : undefined;
     if (!node || typeof node !== "object" || Array.isArray(node)) throw new Error(`工作流包含失效输出节点：${output.nodeId}`);
   }
 }

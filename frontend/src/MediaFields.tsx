@@ -62,7 +62,7 @@ function JsonParameterField({ label, value, onChange }: { label: string; value: 
   </label>;
 }
 
-type MediaFieldProps = { parameter: WorkflowParameterView; draft: CreateJobDraft["mediaOverrides"][string]; index: number; onPick?: () => void; onDrop: (file: File) => void; onMove: (sourceId: string) => void; onChange: (mode: "replace" | "clear", file?: File) => void };
+type MediaFieldProps = { numberedImage?: boolean; parameter: WorkflowParameterView; draft: CreateJobDraft["mediaOverrides"][string]; index: number; onPick?: () => void; onDrop: (file: File) => void; onMove: (sourceId: string) => void; onChange: (mode: "replace" | "clear", file?: File) => void };
 export function MediaField(props: MediaFieldProps) {
   const latest = useRef(props);
   useLayoutEffect(() => { latest.current = props; });
@@ -72,9 +72,9 @@ export function MediaField(props: MediaFieldProps) {
   const change = useCallback((mode: "replace" | "clear", file?: File) => latest.current.onChange(mode, file), []);
   return <MediaFieldContent {...props} onPick={props.onPick ? pick : undefined} onDrop={drop} onMove={move} onChange={change} />;
 }
-const MediaFieldContent = memo(function MediaFieldContent({ parameter, draft, index, onPick, onDrop, onMove, onChange }: MediaFieldProps) {
+const MediaFieldContent = memo(function MediaFieldContent({ parameter, draft, index, onPick, onDrop, onMove, onChange, numberedImage }: MediaFieldProps) {
   const baseLabel = parameterLabel(parameter);
-  const mediaLabel = ["图片", "音频", "视频"].includes(baseLabel) ? `${baseLabel} ${index}` : baseLabel;
+  const mediaLabel = numberedImage ? `图片 ${index}` : ["图片", "音频", "视频"].includes(baseLabel) ? `${baseLabel} ${index}` : baseLabel;
   const accept = parameter.valueType === "image" ? "image/*" : parameter.valueType === "video" ? "video/*" : "audio/*";
   const [objectUrl, setObjectUrl] = useState<string>();
   const [dragging, setDragging] = useState(false);

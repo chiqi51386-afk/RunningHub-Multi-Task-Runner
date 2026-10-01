@@ -62,7 +62,7 @@ contextBridge.exposeInMainWorld("runningHub", {
     stop: () => ipcRenderer.invoke("scheduler:stop"),
   },
   external: {
-    openApiKeys: () => ipcRenderer.invoke("external:openApiKeys"),
+    copyApiKeysUrl: () => ipcRenderer.invoke("external:copyApiKeysUrl"),
   },
   updates: {
     check: () => ipcRenderer.invoke("updates:check"),

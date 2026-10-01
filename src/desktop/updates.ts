@@ -1,13 +1,10 @@
 export const updateRepositoryUrl = "https://github.com/chiqi51386-afk/RunningHub-Multi-Task-Runner";
-export const fallbackUpdateRepositoryUrl = "https://github.com/secure-artifacts/RunningHub-Multi-Task-Runner";
 export const latestReleaseUrl = `${updateRepositoryUrl}/releases/latest`;
 export const latestReleaseApiUrl = "https://api.github.com/repos/chiqi51386-afk/RunningHub-Multi-Task-Runner/releases/latest";
 export const latestReleaseApiUrls = [
   latestReleaseApiUrl,
-  "https://api.github.com/repos/secure-artifacts/RunningHub-Multi-Task-Runner/releases/latest",
 ] as const;
 export const trustedUpdateAssetPrefixes = [
-  "/secure-artifacts/RunningHub-Multi-Task-Runner/releases/download/",
   "/chiqi51386-afk/RunningHub-Multi-Task-Runner/releases/download/",
 ] as const;
 
@@ -45,8 +42,11 @@ export interface UpdateProgress {
 }
 
 function versionParts(value: string): number[] {
-  const clean = value.trim().replace(/^v/i, "").split("-")[0] ?? "";
-  if (!/^\d+(?:\.\d+){0,2}$/.test(clean)) return [];
+  const version = value.trim().replace(/^v/i, "");
+  // The release version also becomes a local update-directory component.
+  // Validate the whole value, not merely the part preceding a hyphen.
+  if (!/^\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/.test(version)) return [];
+  const clean = version.split("-")[0]!;
   return clean.split(".").map(part => Number(part));
 }
 
@@ -65,9 +65,9 @@ export function parseLatestRelease(payload: unknown, currentVersion: string): Up
   if (!payload || typeof payload !== "object") throw new Error("GitHub 返回的更新信息格式无效。");
   const release = payload as GithubReleasePayload;
   const latestVersion = typeof release.tag_name === "string" ? release.tag_name.replace(/^v/i, "") : "";
-  if (!versionParts(latestVersion).length) throw new Error("最新 Release 缺少有效版本号。");
+  if (latestVersion !== latestVersion.trim() || !versionParts(latestVersion).length) throw new Error("最新 Release 缺少有效版本号。");
   const assets = Array.isArray(release.assets) ? release.assets as GithubReleaseAsset[] : [];
-  const asset = assets.find(item => typeof item.name === "string" && /^RunningHub-Runner-v[\d.]+-windows-x64\.zip$/i.test(item.name));
+  const asset = assets.find(item => item?.name === `RunningHub-Runner-v${latestVersion}-windows-x64.zip`);
   return {
     currentVersion,
     latestVersion,

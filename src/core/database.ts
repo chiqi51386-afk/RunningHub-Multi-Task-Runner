@@ -31,7 +31,7 @@ const ACCOUNT_SELECT = `
 const JOB_SELECT = `
   SELECT id, workflow_id, runninghub_workflow_id, workflow_name, profile_version,
          profile_snapshot_json, parameters_json, media_json, instance_type, output_dir, account_id,
-         remote_task_id, status, outputs_json, raw_result_json, error_json, submission_json,
+         remote_task_id, status, outputs_json, raw_result_json, error_json, submission_json, cancel_requested_at,
          retry_phase, retry_after, created_at, assigned_at, submit_started_at,
          generation_started_at, remote_completed_at, completed_at, updated_at
   FROM jobs`;
@@ -183,6 +183,9 @@ export class CoreDatabase {
       this.raw.exec("ALTER TABLE workflows ADD COLUMN source_url TEXT");
     }
     const jobColumns = this.raw.prepare("PRAGMA table_info(jobs)").all() as DbRow[];
+    if (!jobColumns.some(column => column.name === "cancel_requested_at")) {
+      this.raw.exec("ALTER TABLE jobs ADD COLUMN cancel_requested_at INTEGER");
+    }
     if (!jobColumns.some(column => column.name === "submission_json")) {
       this.raw.exec("ALTER TABLE jobs ADD COLUMN submission_json TEXT");
     }
@@ -499,6 +502,7 @@ export class CoreDatabase {
   }
 
   updateJob(id: string, update: Partial<{
+    cancelRequestedAt: number | null;
     submission: Job["submission"];
     status: JobStatus;
     accountId: string | null;
@@ -517,6 +521,7 @@ export class CoreDatabase {
     completedAt: number | null;
   }>): Job {
     const mapping: Record<string, { column: string; encode?: (value: unknown) => unknown }> = {
+      cancelRequestedAt: { column: "cancel_requested_at" },
       submission: { column: "submission_json", encode: nullableJson },
       status: { column: "status" }, accountId: { column: "account_id" }, remoteTaskId: { column: "remote_task_id" },
       media: { column: "media_json", encode: json }, outputs: { column: "outputs_json", encode: nullableJson },
@@ -645,6 +650,7 @@ function workflowFromRow(row: DbRow): WorkflowRecord {
 
 function jobFromRow(row: DbRow): Job {
   return {
+    cancelRequestedAt: row.cancel_requested_at == null ? undefined : Number(row.cancel_requested_at),
     submission: parseJson(row.submission_json, undefined as Job["submission"]),
     id: String(row.id), workflowId: String(row.workflow_id), runningHubWorkflowId: String(row.runninghub_workflow_id),
     workflowName: String(row.workflow_name ?? ""), profileVersion: Number(row.profile_version),

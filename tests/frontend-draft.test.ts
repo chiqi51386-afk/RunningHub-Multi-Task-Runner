@@ -1,13 +1,41 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { clearDraftInputs, createDraft, cloneDraft, exchangeImages, prepareDraft, transferDraft, visibleMedia } from "../frontend/src/task-draft.js";
+import { clearDraftInputs, createDraft, cloneDraft, exchangeImages, expandedImageSlotCount, prepareDraft, transferDraft, visibleMedia } from "../frontend/src/task-draft.js";
 import { attachMediaControls } from "../frontend/src/workflow-view.js";
 import type { WorkflowParameterView, WorkflowView } from "../frontend/src/types.js";
 
 const image = (id: string): WorkflowParameterView => ({ id, key: `${id}.image`, nodeId: id, fieldName: "image", classType: "LoadImage", valueType: "image", semanticType: "image", defaultValue: "", confidence: 1, mediaControl: { parameterId: `switch_${id}`, activeValue: false, inactiveValue: true, autoEnableOnReplace: true, detected: false } });
 const workflow = (id: string, parameters: WorkflowParameterView[]): WorkflowView => ({ id, name: id, runningHubWorkflowId: id, parameters, parameterCount: parameters.length, profileVersion: 1, needsReview: false, updatedAt: 0 });
 const a = image("a"), b = image("b");
+
+test("dynamic image slots preserve gaps, node identity, swaps and cleared hidden inputs", () => {
+  const slots = Array.from({ length: 6 }, (_, i) => ({ ...image(`node${i}`), referenceIndex: i }));
+  const wf = workflow("dynamic", slots);
+  let draft = createDraft(wf);
+  assert.equal(expandedImageSlotCount(slots, draft), 2);
+  for (let i = 0; i < 6; i++) {
+    draft.mediaOverrides[slots[i]!.id] = { enabled: true, mode: "replace", localPath: `picture${i + 1}.png` };
+    assert.equal(expandedImageSlotCount(slots, draft), Math.min(6, Math.max(2, i + 2)));
+  }
+  draft.mediaOverrides.node1 = { enabled: false, mode: "clear" };
+  assert.equal(draft.mediaOverrides.node2!.localPath, "picture3.png");
+  draft = exchangeImages(draft, slots[0]!, slots[2]!);
+  assert.equal(draft.mediaOverrides.node0!.localPath, "picture3.png");
+  assert.equal(draft.mediaOverrides.node2!.localPath, "picture1.png");
+  draft = exchangeImages(draft, slots[2]!, slots[1]!);
+  assert.equal(draft.mediaOverrides.node1!.localPath, "picture1.png");
+  assert.equal(draft.mediaOverrides.node2!.mode, "clear");
+  const target = workflow("other", slots.map((slot, i) => ({ ...slot, id: `other${i}`, nodeId: `other${i}` })));
+  const next = transferDraft(draft, wf, target, "h3-multi-reference");
+  assert.equal(next.mediaOverrides.other1!.localPath, "picture1.png");
+  assert.equal(next.mediaOverrides.other2!.mode, "clear");
+  const cleared = prepareDraft(clearDraftInputs(next, target), target, "h3-multi-reference");
+  assert.equal(expandedImageSlotCount(target.parameters, cleared), 2);
+  assert.equal(Object.values(cleared.mediaOverrides).length, 6);
+  assert.ok(Object.values(cleared.mediaOverrides).every(item => item.mode === "clear"));
+  assert.equal(expandedImageSlotCount(slots.slice(0, 1), draft), 1);
+});
 test("bundled Inf to LTX keeps scheduler internals and produces no dpm++ scheduler override", () => {
   const load = (file: string, id: string) => {
     const data = JSON.parse(readFileSync(`bundled-workflows/${file}.rhworkflow.json`, "utf8"));

@@ -58,6 +58,21 @@ test("secret masking removes query, bearer, and authorization forms", () => {
   assert.equal(masked.includes("another-token"), false);
 });
 
+test("JSON secret redaction preserves valid JSON and masks nested escaped values", () => {
+  const raw = {apiKey: 'private-"-value', nested: {api_key: "private-two", password: "private-three", accessToken: "private-four"}, taskId: "keep"};
+  const masked = maskSecrets(JSON.stringify(raw));
+  assert.equal(masked.includes("private"), false);
+  assert.equal(JSON.parse(masked).taskId, "keep");
+});
+
+test("credential-bearing API requests must reject redirects", async () => {
+  const client = new RunningHubClient("test-only-key", resolveConfig(), async (_url, init) => {
+    assert.equal(init?.redirect, "error");
+    return Response.json({code: 0, data: {remainCoins: "10"}});
+  });
+  await client.accountStatus();
+});
+
 test("a missing RunningHub webapp is a definite workflow failure, not submit ambiguity", () => {
   const detail = classifyRunningHubError({ message: "webapp not exists", phase: "submit" });
   assert.equal(detail.code, "WORKFLOW_VALIDATION");

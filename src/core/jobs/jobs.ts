@@ -89,7 +89,8 @@ export class Jobs {
     if (current.status !== to && !canTransition(current.status, to)) {
       throw new Error(`Illegal job transition: ${current.status} -> ${to}`);
     }
-    const job = this.db.updateJob(id, { ...update, status: to });
+    const job = this.db.updateJob(id, { ...update, status: to,
+      ...(["CANCELLED", "FAILED", "REMOTE_SUCCESS", "COMPLETED"].includes(to) ? { cancelRequestedAt: null } : {}) });
     this.emit(job);
     return job;
   }

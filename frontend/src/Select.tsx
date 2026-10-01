@@ -35,7 +35,17 @@ export function Select({ children, value, onChange, disabled, ...props }: Select
     return () => {document.removeEventListener('pointerdown', outside); window.removeEventListener('resize', close); window.removeEventListener('scroll', close, true);};
   }, [open]);
   useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
-  useEffect(() => { if (open) root.current?.querySelector(`#${CSS.escape(id)}-${cursor}`)?.scrollIntoView({block:'nearest'}); }, [cursor, open]);
+  useEffect(() => {
+    if (!open) return;
+    const list = root.current?.querySelector<HTMLElement>('.app-select-options');
+    const option = root.current?.querySelector<HTMLElement>(`#${CSS.escape(id)}-${cursor}`);
+    if (!list || !option) return;
+    // Scroll only the listbox. scrollIntoView also moves ancestor panels,
+    // whose scroll-to-close listener can immediately dismiss this dropdown.
+    const listBounds = list.getBoundingClientRect(), bounds = option.getBoundingClientRect();
+    if (bounds.top < listBounds.top) list.scrollTop -= listBounds.top - bounds.top;
+    else if (bounds.bottom > listBounds.bottom) list.scrollTop += bounds.bottom - listBounds.bottom;
+  }, [cursor, open, id]);
   return <div className="app-select" ref={root} onBlur={e => {if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);}}>
     <button ref={trigger} type="button" role="combobox" aria-label={props['aria-label']} aria-labelledby={props['aria-labelledby']} title={props.title} disabled={disabled} aria-expanded={open} aria-controls={id} aria-activedescendant={open ? `${id}-${cursor}` : undefined} onClick={() => open ? setOpen(false) : show()} onKeyDown={e => {
       if (e.key === 'Escape') {e.preventDefault(); e.stopPropagation(); setOpen(false);}

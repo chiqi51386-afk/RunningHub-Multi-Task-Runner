@@ -1,7 +1,8 @@
-import { app } from "electron";
+import { app, safeStorage } from "electron";
 import path from "node:path";
 import { RunningHubBackend } from "../src/core/index.js";
-import { PlainTextSecretStore, type SecretStore } from "../src/core/secretStore.js";
+import type { SecretStore } from "../src/core/secretStore.js";
+import { SystemSecretStore } from "../src/core/secureSecrets.js";
 
 const terminal = new Set(["COMPLETED", "FAILED", "CANCELLED", "SUBMIT_UNKNOWN"]);
 const testRoot = path.resolve("work", "h3-five-image-test");
@@ -32,7 +33,7 @@ async function run(): Promise<void> {
   const ephemeralKey = process.env.RUNNINGHUB_TEST_KEY?.trim();
   const secretStore: SecretStore = ephemeralKey
     ? { encrypt: () => { throw new Error("Live test does not persist API keys."); }, decrypt: () => ephemeralKey }
-    : new PlainTextSecretStore();
+    : new SystemSecretStore(safeStorage);
   const backend = new RunningHubBackend({
     databasePath: path.join(userData, "runninghub.sqlite"),
     secretStore,

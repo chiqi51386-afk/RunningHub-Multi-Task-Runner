@@ -18,10 +18,12 @@ jobs:
 
     steps:
       - name: 检出源码
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: 安装 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
           cache: npm
@@ -34,11 +36,11 @@ jobs:
         run: |
           $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
           $releaseTag = "v$version"
-          if ("${{ github.ref }}" -ne "refs/tags/$releaseTag") {
+          if ($env:GITHUB_REF -ne "refs/tags/$releaseTag") {
             throw "发布必须从对应版本标签触发：refs/tags/$releaseTag"
           }
-          if ("${{ github.event_name }}" -eq "push" -and "${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne $releaseTag) {
-            throw "标签 ${{ github.ref_name }} 与 package.json 版本 $releaseTag 不一致。"
+          if ($env:GITHUB_EVENT_NAME -eq "push" -and $env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne $releaseTag) {
+            throw "标签与 package.json 版本 $releaseTag 不一致。"
           }
           "RELEASE_TAG=$releaseTag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
@@ -51,8 +53,11 @@ jobs:
       - name: 类型检查与自动化测试
         run: |
           npm run typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run frontend:typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: 构建 Windows x64 可执行压缩包
         run: npm run release:win
@@ -60,21 +65,54 @@ jobs:
       - name: 验证发布文件存在
         shell: pwsh
         run: |
-          $artifact = "release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip"
+          $artifact = "release-build/RunningHub-Runner-$env:RELEASE_TAG-windows-x64.zip"
           if (-not (Test-Path -LiteralPath $artifact)) {
             throw "云端构建未生成预期文件：$artifact"
           }
           Get-Item -LiteralPath $artifact | Select-Object FullName, Length
 
+      - name: 归档源码与审核报告
+        shell: pwsh
+        run: |
+          node scripts/security-scan.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ./scripts/export-source.ps1
+          Get-ChildItem -LiteralPath release-build -Filter "RunningHub-Runner-$env:RELEASE_TAG-*.zip" | ForEach-Object {
+            $digest = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$digest  $($_.Name)"
+          } | Set-Content -LiteralPath release-build/SHA256SUMS.txt -Encoding ascii
+
+      - name: 保存构建产物（发布失败仍可取回）
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64
+          if-no-files-found: error
+          path: |
+            release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
+            release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-source.zip
+            SECURITY_AUDIT_v0.1.49.md
+            release-build/SHA256SUMS.txt
+
       - name: 生成构建证明
-        uses: actions/attest-build-provenance@v2
+        # Approved exception: this personal private repository has no Enterprise
+        # attestation entitlement. Other repositories still fail on attestation errors.
+        if: ${{ !(github.repository == 'chiqi51386-afk/RunningHub-Multi-Task-Runner' && github.event.repository.private == true) }}
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with:
           subject-path: release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
 
+      - name: 记录私有个人仓库的构建证明例外
+        if: ${{ github.repository == 'chiqi51386-afk/RunningHub-Multi-Task-Runner' && github.event.repository.private == true }}
+        run: 'Write-Output "::notice::Artifact attestation is unavailable for this personal private repository. Tests and SHA-256 checksums are retained; this release has no GitHub provenance attestation."'
+
       - name: 创建 GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          files: release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
+          files: |
+            release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
+            release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-source.zip
+            SECURITY_AUDIT_v0.1.49.md
+            release-build/SHA256SUMS.txt
           generate_release_notes: true
           name: RunningHub Runner ${{ env.RELEASE_TAG }}

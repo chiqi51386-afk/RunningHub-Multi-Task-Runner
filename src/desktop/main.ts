@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain as electronIpcMain, nativeImage, shell, safeStorage, clipboard } from "electron";
+import type { IpcMainInvokeEvent } from "electron";
 import { focusExistingWindow } from "./windowLifecycle.js";
 import { createHash } from "node:crypto";
 import { resolveMediaInputs } from "../core/workflows/mediaInputs.js";
@@ -13,7 +14,8 @@ import { access, appendFile, mkdir, readFile, realpath, rename, rm, stat, writeF
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { RunningHubBackend } from "../core/index.js";
-import { InMemorySecretStore, PlainTextSecretStore } from "../core/secretStore.js";
+import { InMemorySecretStore } from "../core/secretStore.js";
+import { SystemSecretStore, migratePlaintextKeys } from "../core/secureSecrets.js";
 import type { Account, CreateJobInput, InstanceType, Job, WorkflowProfile, WorkflowRecord } from "../core/types.js";
 import { latestReleaseApiUrls, latestReleaseUrl, parseLatestRelease, trustedUpdateAssetPrefixes, updateRepositoryUrl } from "./updates.js";
 import type { UpdateInfo, UpdateProgress } from "./updates.js";
@@ -32,6 +34,18 @@ const smokeMode = process.argv.includes("--smoke");
 if (smokeMode) app.setPath("userData", mkdtempSync(path.join(app.getPath("temp"), "rh-desktop-smoke-")));
 else app.setPath("userData", path.join(app.getPath("appData"), "runninghub-multi-task-runner-core"));
 let mainWindow: BrowserWindow | undefined;
+let rendererUrl = "";
+const ipcMain = {
+  handle(channel: string, listener: (event: IpcMainInvokeEvent, ...args: any[]) => unknown) {
+    electronIpcMain.handle(channel, (event, ...args) => {
+      if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents ||
+          event.senderFrame !== mainWindow.webContents.mainFrame || event.senderFrame?.url !== rendererUrl) {
+        throw new Error("拒绝来自非应用主页面的请求。");
+      }
+      return listener(event, ...args);
+    });
+  },
+};
 let quitting = false;
 let desktopSettingsPath = "";
 let defaultOutputDir = "";
@@ -68,6 +82,7 @@ async function checkForUpdate() {
         signal: AbortSignal.timeout(15_000),
       });
       if (response.ok) return parseLatestRelease(await response.json(), applicationVersion);
+      if (response.status === 404) throw new Error("个人仓库尚无可公开访问的 Release，或仓库为私有；请联系发布者确认更新权限。");
       lastError = `GitHub 返回 HTTP ${response.status}`;
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
@@ -302,6 +317,7 @@ function jobView(job: Job) {
   });
   return {
     id: job.id, workflowName: job.workflowName, status: job.status, accountLabel: account?.label,
+    cancelRequestedAt: job.cancelRequestedAt,
     submission: job.submission,
     instanceType: job.instanceType,
     remoteTaskId: job.remoteTaskId, createdAt: job.createdAt, startedAt: job.assignedAt, completedAt: job.completedAt,
@@ -537,7 +553,7 @@ function registerHandlers(): void {
   ipcMain.handle("scheduler:status", () => backend.scheduler.isRunning());
   ipcMain.handle("scheduler:start", async () => { await backend.start(); });
   ipcMain.handle("scheduler:stop", async () => { await backend.stop(); });
-  ipcMain.handle("external:openApiKeys", async () => { await shell.openExternal(runningHubApiKeysUrl); });
+  ipcMain.handle("external:copyApiKeysUrl", async () => { await clipboard.writeText(runningHubApiKeysUrl); if (await clipboard.readText() !== runningHubApiKeysUrl) throw new Error("复制失败，请重试"); });
   ipcMain.handle("updates:check", () => checkForUpdate());
   ipcMain.handle("updates:downloadAndInstall", () => downloadAndInstallUpdate());
   ipcMain.handle("updates:openRepository", async () => { await shell.openExternal(updateRepositoryUrl); });
@@ -557,8 +573,15 @@ async function createWindow(): Promise<BrowserWindow> {
   const window = new BrowserWindow({
     width: 1440, height: 940, minWidth: 980, minHeight: 680,
     backgroundColor: "#080c12", show: false,
-    webPreferences: { preload, contextIsolation: true, nodeIntegration: false },
+    webPreferences: { preload, contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false },
   });
+  rendererUrl = pathToFileURL(path.resolve(applicationRoot, "frontend", "dist", "index.html")).href;
+  mainWindow = window;
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("will-navigate", event => event.preventDefault());
+  window.webContents.on("will-attach-webview", event => event.preventDefault());
+  window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  window.webContents.session.setPermissionCheckHandler(() => false);
   await window.loadFile(path.resolve(applicationRoot, "frontend", "dist", "index.html"));
   // `ready-to-show` can fire before loadFile() resolves. Registering its
   // listener afterwards races with Chromium and leaves a healthy process with
@@ -578,12 +601,13 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
   const desktopSettings = await readDesktopSettings();
   const outputDir = desktopSettings.outputDir ?? defaultOutputDir;
   await mkdir(outputDir, { recursive: true });
-  const secretStore = smokeMode ? new InMemorySecretStore() : new PlainTextSecretStore();
+  const secretStore = smokeMode ? new InMemorySecretStore() : new SystemSecretStore(safeStorage);
   backend = new RunningHubBackend({
     databasePath: smokeMode ? ":memory:" : path.join(userData, "runninghub.sqlite"),
     secretStore,
     config: { apiHost: "https://www.runninghub.ai", outputDir },
   });
+  if (secretStore instanceof SystemSecretStore) migratePlaintextKeys(backend.database.raw, secretStore);
   await seedBundledWorkflows();
   registerHandlers();
   const window = await createWindow();
@@ -690,6 +714,12 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
         await wait();
         const optimization = workspace.querySelector('button[aria-label="中文生成词优化"]');
         if (!optimization || optimization.getAttribute('aria-pressed') !== 'false') return false;
+        const imageSlots = [...workspace.querySelectorAll('.mv-media .media-field')];
+        if (imageSlots.length !== 2 || imageSlots.some((slot, i) => slot.querySelector('.media-head strong')?.textContent !== '图片 ' + (i + 1))) throw new Error('H3 image slot numbering mismatch');
+        for (const slot of imageSlots) {
+          const dropzone = slot.querySelector('.compact-dropzone');
+          if (!dropzone || getComputedStyle(dropzone, '::after').content !== '"+"') throw new Error('H3 must use MV add-image style');
+        }
         const section = [...workspace.querySelectorAll('.form-section')].find(element => element.querySelector('h2')?.textContent === '生成参数');
         const labels = [...(section?.querySelectorAll('.dynamic-grid > label') ?? [])];
         const names = labels.map(element => element.textContent);

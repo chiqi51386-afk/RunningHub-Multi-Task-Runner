@@ -27,6 +27,15 @@ export function setDraftMedia(draft: CreateJobDraft, parameter: WorkflowParamete
   if (parameter.mediaControl?.autoEnableOnReplace) parameterValues[parameter.mediaControl.parameterId] = media.mode === "replace" ? parameter.mediaControl.activeValue : parameter.mediaControl.inactiveValue;
   return { ...draft, parameterValues, mediaOverrides: { ...draft.mediaOverrides, [parameter.id]: media } };
 }
+// Presentation only: keep gaps and all underlying overrides for submission.
+export function expandedImageSlotCount(media: WorkflowParameterView[], draft: CreateJobDraft): number {
+  const images = media.filter(parameter => parameter.valueType === "image");
+  let count = 2;
+  images.forEach((parameter, index) => {
+    if (draft.mediaOverrides[parameter.id]?.mode === "replace") count = Math.max(count, index + 2);
+  });
+  return Math.min(images.length, count);
+}
 export function exchangeImages(draft: CreateJobDraft, source: WorkflowParameterView, target: WorkflowParameterView): CreateJobDraft {
   if (source.id === target.id || source.valueType !== "image" || target.valueType !== "image") return draft;
   const from = draft.mediaOverrides[source.id];

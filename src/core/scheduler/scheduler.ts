@@ -19,6 +19,7 @@ export class Scheduler {
   private readonly activeJobs = new Set<string>();
   private readonly activePromises = new Set<Promise<void>>();
   private readonly controllers = new Map<string, AbortController>();
+  private readonly cancellations = new Map<string, Promise<Job>>();
   private readonly retryTimers = new Map<string, NodeJS.Timeout>();
   private readonly startupAuditPending = new Set<string>();
   private accountWakeTimer?: NodeJS.Timeout;
@@ -72,29 +73,52 @@ export class Scheduler {
     this.accountWakeAt = undefined;
     for (const controller of this.controllers.values()) controller.abort(new Error("Backend stopped"));
     await Promise.allSettled([...this.activePromises]);
+    await Promise.allSettled([...this.cancellations.values()]);
     await this.downloads.stop();
   }
 
   /** Cancel queued local work or stop an already-submitted RunningHub task. */
-  async cancel(jobId: string): Promise<Job> {
+  cancel(jobId: string): Promise<Job> {
+    const existing = this.cancellations.get(jobId);
+    if (existing) return existing;
+    const pending = this.performCancel(jobId).finally(() => {
+      if (this.cancellations.get(jobId) === pending) this.cancellations.delete(jobId);
+    });
+    this.cancellations.set(jobId, pending);
+    return pending;
+  }
+
+  private async performCancel(jobId: string): Promise<Job> {
     let job = this.jobs.get(jobId);
     if (!job) throw new Error(`Job not found: ${jobId}`);
     if (["DOWNLOAD_PENDING", "DOWNLOADING"].includes(job.status) ||
       (job.status === "RETRY_WAIT" && job.retryPhase === "download")) return this.downloads.cancel(jobId);
     if (["REMOTE_SUCCESS", "COMPLETED", "FAILED", "CANCELLED", "SUBMIT_UNKNOWN"]
       .includes(job.status)) return job;
+    // A request already in flight cannot be retracted by changing local state.
+    // Persist intent and keep the account until its remote outcome is known.
+    if (job.status === "SUBMITTING" && !job.remoteTaskId) {
+      return this.jobs.transition(job.id, job.status, { cancelRequestedAt: job.cancelRequestedAt ?? Date.now() });
+    }
     const hasActiveRemoteGeneration = job.status === "REMOTE_QUEUED" || job.status === "RUNNING" ||
       (job.status === "RETRY_WAIT" && job.retryPhase === "query");
     if (job.remoteTaskId && hasActiveRemoteGeneration) {
-      if (!job.accountId) throw new Error("任务已经提交，但找不到用于取消任务的账号。");
-      const { client } = this.accounts.clientFor(job.accountId);
+      job = this.jobs.transition(job.id, job.status, { cancelRequestedAt: job.cancelRequestedAt ?? Date.now() });
+      let client: ReturnType<AccountPool["clientFor"]>["client"];
       try {
-        await client.cancelTask(job.remoteTaskId);
+        if (!job.accountId) throw new Error("任务已经提交，但找不到用于取消任务的账号。");
+        ({ client } = this.accounts.clientFor(job.accountId));
+      } catch (error) {
+        this.clearCancellation(jobId, error);
+        throw error;
+      }
+      try {
+        await client.cancelTask(job.remoteTaskId!);
         // A successful cancel response only confirms that RunningHub accepted
         // the request.  It does not prove that the task was cancelled: the
         // task may have completed while the request was in flight.  Query the
         // authoritative remote state before changing the local terminal state.
-        const response = await client.queryTask(job.remoteTaskId);
+        const response = await client.queryTask(job.remoteTaskId!);
         const status = normalizeRunningHubResponse(response).status ?? "UNKNOWN";
         const reconciled = this.reconcileRemoteAfterCancel(jobId, response, status);
         if (reconciled) return reconciled;
@@ -104,13 +128,19 @@ export class Scheduler {
         // then answer 1004. For an explicit user cancellation this is the
         // desired terminal outcome, not an error dialog.
         if (isRemoteTaskMissing(error)) return this.finishMissingRemoteCancellation(jobId);
-        if (!isApiKeyCancelNotAllowed(error)) throw error;
+        if (!isApiKeyCancelNotAllowed(error)) {
+          this.clearCancellation(jobId, error);
+          throw error;
+        }
         let response: Record<string, unknown>;
         try {
-          response = await client.queryTask(job.remoteTaskId);
+          response = await client.queryTask(job.remoteTaskId!);
         } catch (queryError) {
           if (!(queryError instanceof RunningHubError) || queryError.detail.retryable ||
-            !queryError.detail.raw || typeof queryError.detail.raw !== "object") throw queryError;
+            !queryError.detail.raw || typeof queryError.detail.raw !== "object") {
+            this.clearCancellation(jobId, queryError);
+            throw queryError;
+          }
           response = queryError.detail.raw as Record<string, unknown>;
         }
         const status = normalizeRunningHubResponse(response).status ?? "UNKNOWN";
@@ -122,6 +152,7 @@ export class Scheduler {
           phase: "cancel", retryable: false, accountRelated: false, safeToReassign: false,
           remoteCode: error instanceof RunningHubError ? error.detail.remoteCode : "APIKEY_TASK_CANCEL_NOT_ALLOWED",
         };
+        this.clearCancellation(jobId, new RunningHubError(detail.message, detail, error));
         throw new RunningHubError(detail.message, detail, error);
       }
       job = this.jobs.get(jobId) ?? job;
@@ -138,6 +169,15 @@ export class Scheduler {
       this.accounts.release(job.accountId, job.id, false, "IDLE");
     }
     return cancelled;
+  }
+
+  private clearCancellation(jobId: string, error: unknown): void {
+    const current = this.jobs.get(jobId);
+    if (!current || !["REMOTE_QUEUED", "RUNNING", "RETRY_WAIT"].includes(current.status)) return;
+    const detail: JobError = { code: "CANCEL_FAILED", message: error instanceof RunningHubError
+      ? error.detail.message : "取消未确认，任务仍在跟踪，可稍后重试取消。",
+      phase: "cancel", retryable: true, accountRelated: false, safeToReassign: false };
+    this.jobs.transition(jobId, current.status, { cancelRequestedAt: null, lastError: detail });
   }
 
   private reconcileRemoteAfterCancel(jobId: string, response: Record<string, unknown>, status: string): Job | undefined {
@@ -321,9 +361,9 @@ export class Scheduler {
     let job = this.jobs.get(jobId);
     if (!job?.accountId) return;
     const accountId = job.accountId;
-    const { client } = this.accounts.clientFor(accountId);
     const context = { jobId: job.id, accountId, remoteTaskId: job.remoteTaskId };
     try {
+      const { client } = this.accounts.clientFor(accountId);
       if (!job.remoteTaskId) {
         const originalMedia = job.media;
         const mediaForAccount = originalMedia.map(item => !item.uploadedValue || item.uploadedAccountId === accountId
@@ -341,6 +381,7 @@ export class Scheduler {
               const item = media[index]!;
               if (item.uploadedValue) continue;
               const file = await readFileWithHash(item.localPath);
+              if (signal.aborted || this.jobs.get(jobId)?.status === "CANCELLED") return;
               const cached = this.db.getMediaUploadCache(job.accountId!, file.hash, this.config.mediaCacheTtlMs);
               if (cached) {
                 media[index] = { ...item, uploadedValue: cached.runningHubValue, uploadedAccountId: job.accountId!, uploadedAt: cached.uploadedAt };
@@ -349,6 +390,7 @@ export class Scheduler {
                 continue;
               }
               const uploaded = await client.uploadMedia(item.localPath);
+              if (signal.aborted || this.jobs.get(jobId)?.status === "CANCELLED") return;
               media[index] = { ...item, uploadedValue: uploaded.value, uploadedAccountId: job.accountId!, uploadedAt: Date.now(), rawUploadResponse: uploaded.raw };
               this.db.saveMediaUploadCache({
                 accountId: job.accountId!, fileHash: file.hash, fileSize: file.size,
@@ -358,10 +400,12 @@ export class Scheduler {
               this.events.emit("job.updated", job);
             }
           } catch (error) {
+            if (signal.aborted || this.jobs.get(jobId)?.status === "CANCELLED") return;
             await this.handleUploadFailure(job, error);
             return;
           }
         }
+        if (signal.aborted || this.jobs.get(jobId)?.status === "CANCELLED") return;
         if (job.status === "ASSIGNED" || job.status === "UPLOADING") {
           job = this.jobs.transition(job.id, "SUBMITTING", { submitStartedAt: Date.now() });
         }
@@ -384,6 +428,13 @@ export class Scheduler {
         });
       }
 
+      if (this.jobs.get(jobId)?.cancelRequestedAt) {
+        try { await this.cancel(jobId); }
+        catch { /* Keep tracking the saved task even if remote cancellation fails. */ }
+        const current = this.jobs.get(jobId);
+        if (!current || ["CANCELLED", "FAILED", "REMOTE_SUCCESS", "DOWNLOAD_PENDING", "DOWNLOADING", "COMPLETED"].includes(current.status)) return;
+      }
+
       const result = await client.pollTask(job.remoteTaskId!, {
         signal,
         onStatus: async status => {
@@ -391,10 +442,10 @@ export class Scheduler {
           if (!current) return;
           if (status === "RUNNING" && current.status === "REMOTE_QUEUED") {
             this.jobs.transition(jobId, "RUNNING", {
-              generationStartedAt: current.generationStartedAt ?? Date.now(), lastError: null,
+              generationStartedAt: current.generationStartedAt ?? Date.now(), lastError: current.lastError?.code === "CANCEL_FAILED" ? current.lastError : null,
             });
           } else if (status === "RUNNING" && current.status === "RUNNING" && !current.generationStartedAt) {
-            this.jobs.transition(jobId, "RUNNING", { generationStartedAt: Date.now(), lastError: null });
+            this.jobs.transition(jobId, "RUNNING", { generationStartedAt: Date.now(), lastError: current.lastError?.code === "CANCEL_FAILED" ? current.lastError : null });
           } else if ((status === "CREATE" || status === "QUEUED") && current.status === "RUNNING") {
             this.jobs.transition(jobId, "REMOTE_QUEUED");
           }
@@ -418,6 +469,11 @@ export class Scheduler {
 
   private async handleSubmitFailure(job: Job, error: unknown): Promise<void> {
     const detail = error instanceof RunningHubError ? error.detail : submitUnknown(error);
+    if (this.jobs.get(job.id)?.cancelRequestedAt && (detail.confirmedSubmitFailure || (detail.accountRelated && detail.safeToReassign))) {
+      this.jobs.cancel(job.id);
+      this.accounts.release(job.accountId!, job.id, false, "IDLE");
+      return;
+    }
     if (detail.accountRelated && detail.safeToReassign) {
       const accountState: AccountState = detail.code === "ACCOUNT_INVALID_KEY" ? "INVALID_KEY"
         : detail.code === "ACCOUNT_NO_BALANCE" ? "NO_BALANCE"
@@ -560,6 +616,14 @@ export class Scheduler {
         });
       }
       if (["COMPLETED", "FAILED", "CANCELLED", "SUBMIT_UNKNOWN"].includes(job.status)) continue;
+      // Do not let missing local files turn an uncertain submitted task into
+      // FAILED and release its account after a process restart.
+      if (job.status === "SUBMITTING") {
+        this.jobs.recoverTransition(job.id, "SUBMIT_UNKNOWN", {
+          lastError: submitUnknown(new Error("Process stopped during submit")), completedAt: Date.now(),
+        });
+        continue;
+      }
       const recoveryError = await this.validateRecovery(job);
       if (recoveryError) {
         if (job.accountId) this.accounts.release(job.accountId, job.id, false, "IDLE");
@@ -569,10 +633,6 @@ export class Scheduler {
       if (job.status === "ASSIGNED" || job.status === "UPLOADING") {
         if (job.accountId) this.accounts.release(job.accountId, job.id, false, "IDLE");
         this.jobs.recoverTransition(job.id, "PENDING", { accountId: null, assignedAt: null });
-      } else if (job.status === "SUBMITTING") {
-        this.jobs.recoverTransition(job.id, "SUBMIT_UNKNOWN", {
-          lastError: submitUnknown(new Error("Process stopped during submit")), completedAt: Date.now(),
-        });
       } else if ((job.status === "REMOTE_QUEUED" || job.status === "RUNNING" ||
         (job.status === "RETRY_WAIT" && job.retryPhase === "query")) && job.remoteTaskId && job.accountId) {
         this.db.updateAccount(job.accountId, { state: "BUSY", currentJobId: job.id });
