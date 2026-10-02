@@ -90,7 +90,7 @@ jobs:
           path: |
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-source.zip
-            SECURITY_AUDIT_v0.1.49.md
+            SECURITY_AUDIT_v0.1.50.md
             release-build/SHA256SUMS.txt
 
       - name: 生成构建证明
@@ -112,7 +112,7 @@ jobs:
           files: |
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-source.zip
-            SECURITY_AUDIT_v0.1.49.md
+            SECURITY_AUDIT_v0.1.50.md
             release-build/SHA256SUMS.txt
           generate_release_notes: true
           name: RunningHub Runner ${{ env.RELEASE_TAG }}

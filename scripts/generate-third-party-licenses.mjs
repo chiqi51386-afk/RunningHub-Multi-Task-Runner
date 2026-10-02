@@ -33,7 +33,7 @@ const generated = [
 const output = path.join(root, "THIRD_PARTY_LICENSES", "NPM_DEPENDENCIES.md");
 if (process.argv.includes("--check")) {
   const current = await readFile(output, "utf8").catch(() => "");
-  if (current !== generated) {
+  if (current.replaceAll("\r\n", "\n") !== generated) {
     console.error("THIRD_PARTY_LICENSES/NPM_DEPENDENCIES.md is stale. Run npm run licenses:generate.");
     process.exitCode = 1;
   }

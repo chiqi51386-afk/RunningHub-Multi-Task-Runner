@@ -10,7 +10,7 @@ foreach ($folder in $folders) {
   New-Item -ItemType Directory -Path $destination -Force | Out-Null
   Get-ChildItem -LiteralPath (Join-Path $projectRoot $folder) | Copy-Item -Destination $destination -Recurse
 }
-$files = @('package.json','package-lock.json','tsconfig.json','.gitignore','README.md','KNOWN_ISSUES.md','Start RunningHub Runner.cmd','SECURITY_AUDIT_v0.1.49.md',
+$files = @('package.json','package-lock.json','tsconfig.json','.gitignore','README.md','KNOWN_ISSUES.md','Start RunningHub Runner.cmd','SECURITY_AUDIT_v0.1.50.md',
   'frontend/package.json','frontend/package-lock.json','frontend/index.html','frontend/tsconfig.json','frontend/vite.config.ts',
   'scripts/ensure-electron-native.mjs','scripts/generate-third-party-licenses.mjs','scripts/verify-package-boundaries.mjs',
   'scripts/package-windows.ps1','scripts/export-source.ps1','scripts/security-scan.mjs','scripts/security-encryption-smoke.cjs','scripts/dev.ts','scripts/integration.ts')
