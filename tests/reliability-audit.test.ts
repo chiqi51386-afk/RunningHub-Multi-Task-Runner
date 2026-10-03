@@ -362,8 +362,10 @@ test("recovery converts an interrupted SUBMITTING state to SUBMIT_UNKNOWN withou
 test("cancelling an active download aborts it, removes the part file, and stays CANCELLED", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "rh-download-cancel-"));
   let aborted = false;
+  let downloadRequested = false;
   const fetchMock: typeof fetch = async (_input, init = {}) => new Response(new ReadableStream<Uint8Array>({
     start(controller) {
+      downloadRequested = true;
       controller.enqueue(new Uint8Array([1, 2, 3]));
       init.signal?.addEventListener("abort", () => { aborted = true; controller.error(new Error("aborted")); }, { once: true });
     },
@@ -377,7 +379,7 @@ test("cancelling an active download aborts it, removes the part file, and stays 
       taskId: "done", files: [{ url: "https://files/slow.mp4", type: "mp4" }], texts: [], raw: { status: "SUCCESS" },
     } });
     await backend.start();
-    await waitFor(() => backend.jobs.get(job.id)?.status === "DOWNLOADING");
+    await waitFor(() => backend.jobs.get(job.id)?.status === "DOWNLOADING" && downloadRequested);
     await backend.scheduler.cancel(job.id);
     await waitFor(() => aborted);
     await waitFor(async () => {

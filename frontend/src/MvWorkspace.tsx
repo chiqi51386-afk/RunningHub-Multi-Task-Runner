@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useDebouncedSave } from "./useDebouncedSave";
 import { Plus, Trash2, ArrowRight } from "lucide-react";
 import type { CreateJobDraft, WorkflowView, WorkflowParameterView, MediaParameterDraft } from "./types";
 import { MediaField, ParameterField } from "./MediaFields";
@@ -71,7 +72,7 @@ export function MvWorkspace({ workflow, initialDraft, batch, setBatch, batchPane
   useEffect(() => {
     if (editingId && !batch.some(item => item.id === editingId)) finishEditing();
   }, [batch, editingId]);
-  useEffect(() => {
+  useDebouncedSave(() => {
     try {
       // Editing a queued snapshot must not overwrite the user's multi-segment draft.
       localStorage.setItem(storageKey, serializeDraft(editorBackup.current?.segments ?? segments));

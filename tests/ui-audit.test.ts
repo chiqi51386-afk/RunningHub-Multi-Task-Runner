@@ -5,7 +5,7 @@ import test from "node:test";
 
 const root = process.cwd();
 async function readFrontend() {
-  return (await Promise.all(["App.tsx", "CreateTask.tsx", "ProductionBatchPanel.tsx", "MediaFields.tsx", "workflow-view.ts"].map(file => readFile(path.join(root, "frontend/src", file), "utf8")))).join("\\n");
+  return (await Promise.all(["App.tsx", "components/JobRow.tsx", "modals/TaskPreviewModal.tsx", "modals/WorkflowModals.tsx", "CreateTask.tsx", "ProductionBatchPanel.tsx", "MediaFields.tsx", "workflow-view.ts"].map(file => readFile(path.join(root, "frontend/src", file), "utf8")))).join("\\n");
 }
 
 test("job UI exposes structured errors, text outputs, stage progress, and download cancellation", async () => {

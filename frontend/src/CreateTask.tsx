@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight } from "lucide-react";
+import { useDebouncedSave } from "./useDebouncedSave";
 import type { WorkflowView, WorkflowParameterView, CreateJobDraft } from "./types";
 import { WorkflowPicker } from "./WorkflowPicker";
 import { MvWorkspace } from "./MvWorkspace";
@@ -23,7 +24,7 @@ export const CreateJob = memo(function CreateJob(props: CreateJobProps) {
     return mergeSavedBatches(saved, readSaved("rh-runner.mv-segments.v1.batch"));
   });
   const [storageError, setStorageError] = useState<string>();
-  useEffect(() => {
+  useDebouncedSave(() => {
     try {
       const legacy = localStorage.getItem("rh-runner.mv-segments.v1.batch");
       if (legacy !== null) localStorage.setItem("rh-runner.mv-batch-migration-backup", legacy);
@@ -116,7 +117,7 @@ const CreateWorkspace = memo(function CreateWorkspace({ workflows, initialWorkfl
     } catch { return isSavedDraft(saved) ? saved : createDraft(initialWorkflow); }
   });
   const [storageError, setStorageError] = useState<string>();
-  useEffect(() => {
+  useDebouncedSave(() => {
     if (!draft.workflowId) return;
     try { localStorage.setItem(`rh-runner.draft.v1.${activeMode}`, serializeDraft(draft)); setStorageError(undefined); }
     catch { setStorageError("输入保存失败，请勿关闭软件。"); }

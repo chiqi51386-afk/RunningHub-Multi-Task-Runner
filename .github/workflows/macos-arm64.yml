@@ -3,11 +3,10 @@ name: macOS Apple Silicon ZIP
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-    paths: [.github/workflows/macos-arm64.yml]
+    tags: ["v*"]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -30,6 +29,11 @@ jobs:
         run: |
           test "$(uname -m)" = arm64
           node -e "if(process.arch !== 'arm64') process.exit(1)"
+      - name: Verify release tag
+        run: |
+          VERSION=$(node -p 'require("./package.json").version')
+          test "$GITHUB_REF" = "refs/tags/v$VERSION"
+          echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
       - name: Install dependencies
         run: |
           npm ci
@@ -65,3 +69,10 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+      - name: Publish macOS ARM64 ZIP
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: |
+            release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-macos-arm64.zip
+            release-build/SHA256SUMS-macos-arm64.txt

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 test("bundled workflow view routes never expose mutation controls", () => {
-  const app = readFileSync("frontend/src/App.tsx", "utf8");
+  const app = readFileSync("frontend/src/views/Workflows.tsx", "utf8");
   for (const section of ["parameters", "outputs", "visibility"]) assert.ok(app.includes(`section="${section}"`));
   assert.ok(!app.includes('disabled={workflow.builtIn} onClick={() => setEditing'));
   const view = readFileSync("frontend/src/WorkflowReadOnlyModal.tsx", "utf8");

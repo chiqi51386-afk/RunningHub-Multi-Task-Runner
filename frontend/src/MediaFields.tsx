@@ -10,11 +10,11 @@ export function DraftThumbnail({ draft }: { draft: CreateJobDraft }) {
   const audio = replacements.find(item => item.file?.type.startsWith("audio/") || /\.(mp3|wav|m4a|aac|flac)$/i.test(item.fileName ?? item.file?.name ?? ""));
   const [objectUrl, setObjectUrl] = useState<string>();
   useEffect(() => {
-    if (!visual?.file) { setObjectUrl(undefined); return; }
+    if (!visual?.file || visual.previewUrl) { setObjectUrl(undefined); return; }
     const url = URL.createObjectURL(visual.file);
     setObjectUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [visual?.file]);
+  }, [visual?.file, visual?.previewUrl]);
   const source = visual?.previewUrl ?? objectUrl;
   const video = visual?.file?.type.startsWith("video/") || /\.(mp4|mov|webm|mkv)$/i.test(visual?.fileName ?? "");
   if (source && video) return <div className="batch-thumbnail"><StaticVideoThumbnail localPath={visual?.localPath} /></div>;
@@ -79,11 +79,11 @@ const MediaFieldContent = memo(function MediaFieldContent({ parameter, draft, in
   const [objectUrl, setObjectUrl] = useState<string>();
   const [dragging, setDragging] = useState(false);
   useEffect(() => {
-    if (!draft.file) { setObjectUrl(undefined); return; }
+    if (!draft.file || draft.previewUrl) { setObjectUrl(undefined); return; }
     const url = URL.createObjectURL(draft.file);
     setObjectUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [draft.file]);
+  }, [draft.file, draft.previewUrl]);
   const previewUrl = draft.previewUrl ?? objectUrl;
   const choose = onPick
     ? <button type="button" className="dropzone compact-dropzone" aria-label={`选择或拖入${mediaLabel}`} onClick={onPick}>{parameter.valueType === "audio" ? <Music2 size={22} /> : <ImagePlus size={22} />}<strong>选择或拖入{mediaLabel}</strong></button>

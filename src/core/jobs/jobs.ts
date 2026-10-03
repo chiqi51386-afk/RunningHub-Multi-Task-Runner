@@ -2,6 +2,7 @@ import type { CoreDatabase } from "../database.js";
 import { randomUUID } from "node:crypto";
 import type { BackendEvents } from "../events.js";
 import type { CreateJobInput, Job, JobStatus } from "../types.js";
+import { validateProfile, validateProfileAgainstWorkflow } from "../workflows/profiles.js";
 
 const TRANSITIONS: Record<JobStatus, ReadonlySet<JobStatus>> = {
   PENDING: new Set(["ASSIGNED", "CANCELLED"]),
@@ -72,6 +73,9 @@ export class Jobs {
     if (input.production && (!Number.isInteger(input.production.segmentIndex) || input.production.segmentIndex < 1 || input.production.segmentIndex > 9999)) throw new Error("段落编号无效");
     const workflow = this.db.getWorkflow(input.workflowId);
     if (!workflow) throw new Error(`Workflow not found: ${input.workflowId}`);
+    // Recheck persisted profiles too: older imports predate current validation.
+    validateProfile(workflow.profile);
+    validateProfileAgainstWorkflow(workflow.profile, workflow.raw);
     const validIds = new Set(workflow.profile.parameters.map(parameter => parameter.id));
     for (const key of Object.keys(input.parameters)) {
       if (!validIds.has(key)) throw new Error(`Unknown workflow parameter: ${key}`);

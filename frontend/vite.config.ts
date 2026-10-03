@@ -16,7 +16,12 @@ export default defineConfig(({ command }) => ({
       }, injectTo: "head-prepend" }];
     },
   }],
-  build: { outDir: "dist", emptyOutDir: true },
+  build: {
+    outDir: "dist", emptyOutDir: true, sourcemap: false,
+    rollupOptions: { output: { manualChunks(id) {
+      if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return "react-vendor";
+    } } },
+  },
   server: { port: localTestPort, strictPort: true },
   preview: { port: localTestPort, strictPort: true },
 }));

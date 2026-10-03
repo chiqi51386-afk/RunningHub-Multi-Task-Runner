@@ -1,8 +1,6 @@
-import { createWriteStream } from "node:fs";
-import { mkdir, readFile, rename, stat, unlink } from "node:fs/promises";
+import { downloadFile } from "../downloads/transfer.js";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { openApiBase } from "../config.js";
 import type {
   AccountStatus,
@@ -281,39 +279,7 @@ export class RunningHubClient {
   }
 }
 
-export async function downloadFile(
-  fetchImpl: typeof fetch,
-  config: RunningHubConfig,
-  url: string,
-  destination: string,
-  signal?: AbortSignal,
-): Promise<string> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error("Download timeout")), config.downloadTimeoutMs);
-    const temp = `${destination}.part`;
-    try {
-      const requestSignal = signal ? AbortSignal.any([controller.signal, signal]) : controller.signal;
-      const response = await fetchImpl(url, { signal: requestSignal, redirect: "follow" });
-      if (!response.ok || !response.body) {
-        const message = `HTTP ${response.status}: ${await response.text().catch(() => "")}`;
-        const detail = classifyRunningHubError({ message, httpStatus: response.status, phase: "download" });
-        throw new RunningHubError(detail.message, detail);
-      }
-      await mkdir(path.dirname(destination), { recursive: true });
-      requestSignal.throwIfAborted();
-      await pipeline(Readable.fromWeb(response.body as never), createWriteStream(temp), { signal: requestSignal });
-      requestSignal.throwIfAborted();
-      await rename(temp, destination);
-      return destination;
-    } catch (error) {
-      await unlink(temp).catch(() => undefined);
-      if (error instanceof RunningHubError) throw error;
-      const detail = classifyRunningHubError({ message: error, phase: "download" });
-      throw new RunningHubError(detail.message, detail, error);
-    } finally {
-      clearTimeout(timer);
-    }
-  }
+export { downloadFile } from "../downloads/transfer.js";
 
 function sanitizeRaw(value: unknown): unknown {
   const text = maskSecrets(JSON.stringify(value));

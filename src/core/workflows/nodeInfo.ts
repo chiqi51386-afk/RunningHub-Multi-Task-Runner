@@ -1,10 +1,13 @@
 import type { JobMedia, NodeInfo, WorkflowProfile } from "../types.js";
+import { validateProfile } from "./profiles.js";
 
 export function buildNodeInfoList(
   profile: WorkflowProfile,
   jobInputs: Record<string, unknown>,
   media: JobMedia[] = [],
 ): NodeInfo[] {
+  // Persisted, not-yet-submitted jobs may have been created by an older build.
+  validateProfile(profile);
   const mediaByParameter = new Map(media.map(item => [item.parameterId, item]));
   const resolvedInputs = { ...jobInputs };
   for (const parameter of profile.parameters) {

@@ -4,14 +4,18 @@ const { app, safeStorage } = require("electron");
 const Database = require("better-sqlite3");
 
 const diagnosticPath = path.join(process.cwd(), "work", "account-diagnostic.json");
+let redact = value => value;
 function emit(value) {
+  const text = redact(JSON.stringify(value, null, 2));
   fs.mkdirSync(path.dirname(diagnosticPath), { recursive: true });
-  fs.writeFileSync(diagnosticPath, JSON.stringify(value, null, 2), "utf8");
-  console.log(JSON.stringify(value, null, 2));
+  fs.writeFileSync(diagnosticPath, text, "utf8");
+  console.log(text);
 }
 
 app.whenReady().then(async () => {
   const { SystemSecretStore } = await import("../dist/src/core/secureSecrets.js");
+  const { maskSecrets } = await import("../dist/src/core/runninghub/errors.js");
+  redact = maskSecrets;
   const databasePath = path.join(app.getPath("appData"), "runninghub-multi-task-runner-core", "runninghub.sqlite");
   const database = new Database(databasePath, { readonly: true, fileMustExist: true });
   try {
@@ -24,6 +28,9 @@ app.whenReady().then(async () => {
     `).get();
     if (!row) throw new Error("没有可检测的启用账号。");
     const apiKey = new SystemSecretStore(safeStorage).decrypt(row.encrypted_key);
+    // Also remove an exact echoed key even when the server gives it an unknown label.
+    const encodedKey = JSON.stringify(apiKey).slice(1, -1);
+    redact = text => maskSecrets(encodedKey ? text.replaceAll(encodedKey, "****") : text);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new Error("请求超过 20 秒")), 20_000);
     const startedAt = Date.now();
@@ -32,7 +39,7 @@ app.whenReady().then(async () => {
         method: "POST",
         headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ apikey: apiKey }),
-        redirect: "follow",
+        redirect: "error",
         signal: controller.signal,
       });
       const text = await response.text();

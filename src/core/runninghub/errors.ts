@@ -24,6 +24,10 @@ export class RunningHubError extends Error {
 }
 
 function textOf(value: unknown): string {
+  if (value instanceof Error) {
+    const cause = value.cause instanceof Error ? `；${value.cause.message}` : "";
+    return `${value.message}${cause}`;
+  }
   if (typeof value === "string") return value;
   try { return JSON.stringify(value); } catch { return String(value); }
 }

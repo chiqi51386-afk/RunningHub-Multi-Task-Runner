@@ -1,6 +1,8 @@
+import type { AccountState, WorkflowValueType, WorkflowSemanticType, JobStatus, MediaControlBinding } from "../../src/core/types.js";
+export type { AccountState, WorkflowValueType, WorkflowSemanticType, JobStatus, MediaControlBinding } from "../../src/core/types.js";
 export type ViewId = "overview" | "accounts" | "workflows" | "create" | "jobs";
 
-export type AccountState = "UNCHECKED" | "SECRET_UNREADABLE" | "IDLE" | "BUSY" | "REMOTE_BUSY" | "CHECKING" | "COOLDOWN" | "NO_BALANCE" | "INVALID_KEY" | "TEMP_UNAVAILABLE" | "DISABLED";
+
 
 export interface AccountView {
   id: string;
@@ -42,13 +44,9 @@ export interface WorkflowOutputView {
   stage: number;
 }
 
-export type WorkflowValueType = "string" | "integer" | "number" | "boolean" | "image" | "video" | "audio" | "select" | "json";
 
-export type WorkflowSemanticType =
-  | "prompt" | "negative_prompt" | "image" | "video" | "audio" | "duration"
-  | "fps" | "frames" | "width" | "height" | "aspect_ratio" | "resolution" | "resolution_multiple" | "upscale_factor" | "target_resolution" | "lowres_scale"
-  | "seed" | "steps" | "cfg" | "sampler" | "scheduler" | "denoise"
-  | "model" | "lora" | "unknown";
+
+
 
 export interface WorkflowParameterView {
   id: string;
@@ -75,18 +73,9 @@ export interface WorkflowParameterView {
   mappingIssue?: string;
 }
 
-export interface MediaControlBinding {
-  parameterId: string;
-  activeValue: boolean;
-  inactiveValue: boolean;
-  autoEnableOnReplace: boolean;
-  detected: boolean;
-}
 
-export type JobStatus =
-  | "PENDING" | "ASSIGNED" | "UPLOADING" | "SUBMITTING" | "SUBMIT_UNKNOWN"
-  | "REMOTE_QUEUED" | "RUNNING" | "REMOTE_SUCCESS" | "DOWNLOAD_PENDING"
-  | "DOWNLOADING" | "COMPLETED" | "FAILED" | "RETRY_WAIT" | "CANCELLED";
+
+
 
 export interface JobView {
   cancelRequestedAt?: number;

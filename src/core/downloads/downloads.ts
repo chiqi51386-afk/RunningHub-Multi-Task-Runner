@@ -4,7 +4,7 @@ import type { BackendEvents } from "../events.js";
 import type { Jobs } from "../jobs/jobs.js";
 import type { Logger } from "../logger.js";
 import { downloadFile, safeOutputExtension } from "../runninghub/client.js";
-import { classifyRunningHubError } from "../runninghub/errors.js";
+import { classifyRunningHubError, RunningHubError } from "../runninghub/errors.js";
 import type { Job, RunningHubConfig } from "../types.js";
 
 export class DownloadQueue {
@@ -113,7 +113,7 @@ export class DownloadQueue {
   }
 
   private fail(job: Job, error: unknown): void {
-    const detail = classifyRunningHubError({
+    const detail = error instanceof RunningHubError ? error.detail : classifyRunningHubError({
       message: error instanceof Error ? error.message : error,
       phase: "download",
     });

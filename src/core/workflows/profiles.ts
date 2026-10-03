@@ -92,8 +92,15 @@ export function validateProfile(profile: WorkflowProfile): void {
   const ids = new Set<string>();
   const targets = new Set<string>();
   for (const parameter of profile.parameters) {
-    if (!parameter.id || !parameter.nodeId || !parameter.fieldName) {
+    if (typeof parameter.id !== "string" || !parameter.id ||
+        typeof parameter.nodeId !== "string" || !parameter.nodeId ||
+        typeof parameter.fieldName !== "string" || !parameter.fieldName) {
       throw new Error("Workflow profile parameters require id, nodeId, and fieldName.");
+    }
+    // UI restoration and schema lookup use key; API submission uses the two
+    // target fields. Never accept two different identities for one input.
+    if (parameter.key !== `${parameter.nodeId}.${parameter.fieldName}`) {
+      throw new Error(`失效参数映射：工作流参数标识与提交节点不一致：${parameter.id}`);
     }
     if (ids.has(parameter.id)) throw new Error(`Duplicate workflow profile parameter id: ${parameter.id}`);
     ids.add(parameter.id);
