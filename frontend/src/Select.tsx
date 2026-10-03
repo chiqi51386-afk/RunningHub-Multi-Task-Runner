@@ -1,5 +1,6 @@
 import { Children, isValidElement, useEffect, useId, useRef, useState } from "react";
 import type { ChangeEvent, SelectHTMLAttributes, ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 /** App-rendered listbox: never opens Chromium's native select popup. */
 export function Select({ children, value, onChange, disabled, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
@@ -11,17 +12,18 @@ export function Select({ children, value, onChange, disabled, ...props }: Select
   }); }
   collect(children);
   const root = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
+  const listbox = useRef<HTMLDivElement>(null);
   const id = useId();
   const [open, setOpen] = useState(false), [cursor, setCursor] = useState(0);
   const [position, setPosition] = useState({left:0, top:0, width:0, maxHeight:240});
   const selected = options.findIndex(o => o.value === String(value));
-  function show() {
+  function place() {
     if (disabled || !trigger.current) return;
     const r = trigger.current.getBoundingClientRect(), below = innerHeight-r.bottom-12;
     const height = Math.min(240, Math.max(below, r.top-12));
     setPosition({left:Math.max(8, Math.min(r.left, innerWidth-r.width-8)), top:below >= Math.min(240, options.length*40+12) ? r.bottom+4 : Math.max(8,r.top-height-4), width:r.width, maxHeight:height});
-    setCursor(Math.max(0, selected)); setOpen(true);
   }
+  function show() { place(); setCursor(Math.max(0, selected)); setOpen(true); }
   function choose(index: number) {
     const option = options[index]; if (!option || option.disabled) return;
     onChange?.({target:{value:option.value}, currentTarget:{value:option.value}} as ChangeEvent<HTMLSelectElement>);
@@ -29,16 +31,21 @@ export function Select({ children, value, onChange, disabled, ...props }: Select
   }
   useEffect(() => {
     if (!open) return;
-    const outside = (e: PointerEvent) => {if (!root.current?.contains(e.target as Node)) setOpen(false);};
-    const close = (e: Event) => {if (!(e.target instanceof Element && e.target.closest('.app-select-options'))) setOpen(false);};
+    const outside = (e: PointerEvent) => {if (!root.current?.contains(e.target as Node) && !listbox.current?.contains(e.target as Node)) setOpen(false);};
+    const close = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest('.app-select-options')) return;
+      // Reposition instead of dismissing: background polling and focus can also
+      // scroll panels, and must not cancel an in-progress keyboard selection.
+      place();
+    };
     document.addEventListener('pointerdown', outside); window.addEventListener('resize', close); window.addEventListener('scroll', close, true);
     return () => {document.removeEventListener('pointerdown', outside); window.removeEventListener('resize', close); window.removeEventListener('scroll', close, true);};
   }, [open]);
   useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
   useEffect(() => {
     if (!open) return;
-    const list = root.current?.querySelector<HTMLElement>('.app-select-options');
-    const option = root.current?.querySelector<HTMLElement>(`#${CSS.escape(id)}-${cursor}`);
+    const list = listbox.current;
+    const option = list?.querySelector<HTMLElement>(`#${CSS.escape(id)}-${cursor}`);
     if (!list || !option) return;
     // Scroll only the listbox. scrollIntoView also moves ancestor panels,
     // whose scroll-to-close listener can immediately dismiss this dropdown.
@@ -55,6 +62,6 @@ export function Select({ children, value, onChange, disabled, ...props }: Select
       if (e.key === 'End' && open) {e.preventDefault();setCursor(options.length-1);}
       if ((e.key === 'Enter' || e.key === ' ') && open) {e.preventDefault();choose(cursor);}
     }}><span>{options[selected]?.label ?? '请选择'}</span><span aria-hidden="true">⌄</span></button>
-    {open && <div id={id} role="listbox" className="app-select-options" style={position}>{options.map((o,i) => <button type="button" role="option" id={`${id}-${i}`} key={`${o.value}-${i}`} tabIndex={-1} disabled={o.disabled} aria-selected={i===selected} className={cursor===i?'focused':''} onMouseDown={e => e.preventDefault()} onMouseEnter={() => setCursor(i)} onClick={() => choose(i)}>{o.label}</button>)}</div>}
+    {open && createPortal(<div ref={listbox} id={id} role="listbox" className="app-select-options" style={position}>{options.map((o,i) => <button type="button" role="option" id={`${id}-${i}`} key={`${o.value}-${i}`} tabIndex={-1} disabled={o.disabled} aria-selected={i===selected} className={cursor===i?'focused':''} onMouseDown={e => e.preventDefault()} onMouseEnter={() => setCursor(i)} onClick={() => choose(i)}>{o.label}</button>)}</div>, document.body)}
   </div>;
 }

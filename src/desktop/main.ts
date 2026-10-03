@@ -650,7 +650,8 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       const wait = () => new Promise(resolve => setTimeout(resolve, 100));
       for (let i = 0; i < 30 && !document.querySelector('.settings-button'); i++) await wait();
       document.querySelector('.settings-button')?.click();
-      await wait();
+      // Settings are loaded as a separate chunk; wait for the dialog, not a fixed frame delay.
+      for (let i = 0; i < 100 && !document.querySelector('.settings-scroll'); i++) await wait();
       const scroll = document.querySelector('.settings-scroll');
       if (!scroll || document.querySelectorAll('.theme-card').length !== 4) return false;
       scroll.scrollTop = scroll.scrollHeight;
@@ -659,22 +660,28 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
     })()`);
     console.log(settingsScroll ? "DESKTOP_SETTINGS_SCROLL_PASS" : "DESKTOP_SETTINGS_SCROLL_FAIL");
     await window.webContents.executeJavaScript(`(async () => {
-      const wait = () => new Promise(r => setTimeout(r, 120));
+      const wait = () => new Promise(r => setTimeout(r, 450));
       const modal = document.querySelector('.settings-modal');
       if (modal.querySelector('select')) throw new Error('Native settings select remains');
       const buttons = modal.querySelectorAll('.app-select > button');
       if (buttons.length !== 2) throw new Error('Settings dropdowns missing');
-      buttons[0].scrollIntoView({block:'center'}); await wait(); buttons[0].click(); await wait();
-      const list = modal.querySelector('.app-select-options');
+      buttons[0].scrollIntoView({block:'center',behavior:'instant'}); buttons[0].focus({preventScroll:true}); await wait(); buttons[0].click(); await wait();
+      const list = document.querySelector('.app-select-options');
       if (!list || list.querySelectorAll('[role="option"]').length !== 3) throw new Error('Dropdown did not open');
       const r = list.getBoundingClientRect();
       if (r.top < 0 || r.bottom > innerHeight + 1) throw new Error('Dropdown outside viewport');
       buttons[0].dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true})); await wait();
-      if (!document.querySelector('.settings-modal') || modal.querySelector('.app-select-options')) throw new Error('Escape incorrectly closes settings');
-      buttons[1].scrollIntoView({block:'center'}); await wait(); buttons[1].click(); await wait();
-      buttons[1].dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true})); await wait();
-      buttons[1].dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})); await wait();
-      if (!buttons[1].textContent.includes('8 秒')) throw new Error('Keyboard selection failed');
+      if (!document.querySelector('.settings-modal') || document.querySelector('.app-select-options')) throw new Error('Escape incorrectly closes settings');
+      buttons[1].scrollIntoView({block:'center',behavior:'instant'}); buttons[1].focus({preventScroll:true}); await wait(); buttons[1].click(); await wait();
+      const debugOpen = buttons[1].getAttribute('aria-expanded');
+      const scrollEvents = [];
+      const trackScroll = e => scrollEvents.push(e.target?.className ?? e.target?.nodeName);
+      window.addEventListener('scroll', trackScroll, true);
+      buttons[1].dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true,cancelable:true})); await wait();
+      const debugEnd = buttons[1].getAttribute('aria-activedescendant');
+      window.removeEventListener('scroll', trackScroll, true);
+      buttons[1].dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true})); await wait();
+      if (!buttons[1].textContent.includes('8 秒')) throw new Error('Keyboard selection failed: ' + buttons[1].textContent + ', expanded=' + buttons[1].getAttribute('aria-expanded') + ', opened=' + debugOpen + ', end=' + debugEnd + ', scroll=' + JSON.stringify(scrollEvents));
     })()`);
     console.log('DESKTOP_DROPDOWN_PASS');
     const themesPassed = await window.webContents.executeJavaScript(`(async () => {
@@ -731,7 +738,8 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
     })()`);
     console.log(generationLayout ? "DESKTOP_H3_LAYOUT_PASS" : "DESKTOP_H3_LAYOUT_FAIL");
     const mvLayout = await window.webContents.executeJavaScript(`(async () => {
-      const wait = () => new Promise(resolve => setTimeout(resolve, 150));
+      // Persistence is debounced by 300 ms; storage assertions must wait for it.
+      const wait = () => new Promise(resolve => setTimeout(resolve, 450));
       [...document.querySelectorAll('.create-mode-tabs button')].find(b => b.textContent === 'H3 数字人 MV')?.click();
       await wait();
       const root = document.querySelector('.mv-workspace');
@@ -813,7 +821,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       window.webContents.reload();
     });
     const sharedBatch = await window.webContents.executeJavaScript(`(async () => {
-      const wait = () => new Promise(resolve => setTimeout(resolve, 200));
+      const wait = () => new Promise(resolve => setTimeout(resolve, 450));
       for (let i = 0; i < 30 && !document.querySelector('.create-mode-tabs'); i++) {
         [...document.querySelectorAll('button')].find(b => b.textContent.includes('新建任务'))?.click();
         await wait();
@@ -866,6 +874,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
   const message = error instanceof Error ? `${error.stack ?? error.message}` : String(error);
   const logPath = path.join(app.getPath("userData"), "runninghub-startup-error.log");
   await appendFile(logPath, `[${new Date().toISOString()}]\n${message}\n\n`, "utf8").catch(() => undefined);
+  if (smokeMode) { console.error(message); app.exit(1); return; }
   dialog.showErrorBox("RunningHub Runner 启动失败", `程序启动时发生错误。\n\n${message}\n\n错误日志：${logPath}`);
   if (backend) await backend.close().catch(() => undefined);
   backend = undefined as never;

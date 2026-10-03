@@ -79,7 +79,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .modal { max-height: calc(100dvh - 40px); overflow-y: auto; }
 .settings-modal { display: flex; flex-direction: column; overflow: hidden; max-height: calc(100dvh - 40px); }
 .settings-modal > .modal-head, .settings-modal > .modal-actions { flex: 0 0 auto; }
-.settings-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; display: flex; flex-direction: column; gap: 16px; padding: 3px 8px 3px 3px; }
+.settings-scroll { min-height: 0; overflow-y: auto; overflow-anchor: none; overscroll-behavior: contain; scrollbar-gutter: stable; display: flex; flex-direction: column; gap: 16px; padding: 3px 8px 3px 3px; }
 .settings-scroll > * { flex-shrink: 0; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 .naming-preview { display: grid; gap: 7px; padding: 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--bg); }

@@ -1,6 +1,6 @@
 # RunningHub Multi-Task Runner
 
-调用 RunningHub API 运行工作流。当前源码版本：**v0.1.51**。
+调用 RunningHub API 运行工作流。当前源码版本：**v0.1.52**。
 
 ## 主要功能
 
@@ -14,7 +14,7 @@
 ## 直接使用 Windows 版
 
 1. 打开 [Releases](https://github.com/chiqi51386-afk/RunningHub-Multi-Task-Runner/releases)。
-2. 下载 `RunningHub-Runner-v0.1.51-windows-x64.zip`（云端构建成功后提供）。
+2. 下载 `RunningHub-Runner-v0.1.52-windows-x64.zip`（云端构建成功后提供）。
 3. 解压全部文件，不能只把 EXE 单独拖出来。
 4. 双击 `RunningHub Runner.exe`。
 5. 添加 RunningHub API Key，导入或选择工作流，然后创建任务。
