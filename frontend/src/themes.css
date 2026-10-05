@@ -80,9 +80,50 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .settings-modal { display: flex; flex-direction: column; overflow: hidden; max-height: calc(100dvh - 40px); }
 .settings-modal > .modal-head, .settings-modal > .modal-actions { flex: 0 0 auto; }
 .settings-scroll { min-height: 0; overflow-y: auto; overflow-anchor: none; overscroll-behavior: contain; scrollbar-gutter: stable; display: flex; flex-direction: column; gap: 16px; padding: 3px 8px 3px 3px; }
+.gemini-model-row { display: flex; align-items: end; gap: 12px; }
+.account-platform-tabs { display: flex; gap: 6px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+.account-platform-tabs button { padding: 12px 20px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: inherit; }
+.account-platform-tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--blue); }
+.gemini-account-panel { padding: 24px; }
+.gemini-account-panel .gemini-settings { display: grid; gap: 18px; }
+.gemini-account-panel .gemini-key-list { max-height: none; }
+.gemini-model-row label { flex: 1; min-width: 0; }
+.gemini-settings textarea { resize: vertical; min-height: 80px; }
+.gemini-key-list { display: grid; gap: 8px; max-height: 300px; overflow-y: auto; }
+.gemini-key-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.gemini-key-info { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
+.gemini-key-info code { color: var(--muted); }
+.gemini-key-info .gemini-key-error { flex-basis: 100%; color: var(--muted); overflow-wrap: anywhere; }
+.gemini-key-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.gemini-feedback { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.gemini-feedback.error { color: var(--red); }
+@media (max-width: 650px) { .gemini-key-row, .gemini-model-row { align-items: stretch; flex-direction: column; } .gemini-key-actions { justify-content: flex-end; } }
 .settings-scroll > * { flex-shrink: 0; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 .naming-preview { display: grid; gap: 7px; padding: 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--bg); }
 .naming-preview code { overflow-wrap: anywhere; color: var(--text); font-size: 12px; }
 .settings-section h3 { margin: 0; font-size: 15px; }
 .settings-section p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+/* Duration precision is independent from its one-second adjustment controls. */
+.duration-input { display: flex; align-items: stretch; gap: 6px; }
+.duration-input input { min-width: 0; flex: 1; appearance: textfield; -moz-appearance: textfield; }
+.duration-input input::-webkit-inner-spin-button, .duration-input input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.duration-input button { flex: 0 0 38px; }
+.tts-workspace { width: min(100%, 1000px); display: grid; gap: 20px; padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-sizing: border-box; }
+.tts-options { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(220px, 2fr) auto; align-items: end; gap: 14px; }
+.tts-workspace textarea { width: 100%; box-sizing: border-box; resize: vertical; line-height: 1.7; padding: 14px; }
+.tts-workspace .tts-text { min-height: 210px; }
+.tts-workspace .tts-style { min-height: 82px; }
+.tts-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.tts-result { border-top: 1px solid var(--line); padding-top: 20px; display: grid; gap: 16px; }
+.tts-result audio, .tts-sample { width: 100%; max-height: 42px; }
+.tts-error { color: var(--red); overflow-wrap: anywhere; }
+.tts-workspace .primary-button { background: var(--action); color: var(--on-action); border-color: var(--action); }
+.tts-workspace .primary-button:hover:not(:disabled) { background: var(--action-hover); }
+.tts-workspace button.primary-button, .tts-workspace button.secondary-button { min-height: 39px; padding: 0 15px; border-radius: 9px; border: 1px solid var(--line); font: inherit; font-size: 13px; cursor: pointer; }
+.tts-workspace button.primary-button { border-color: var(--action); }
+.tts-workspace button.secondary-button { background: transparent; color: var(--text); }
+.tts-workspace button:disabled { opacity: .55; cursor: default; }
+.tts-text-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tts-voice-description { margin: -8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+@media(max-width:700px) { .tts-options { grid-template-columns: 1fr; } .tts-workspace { padding: 16px; } }

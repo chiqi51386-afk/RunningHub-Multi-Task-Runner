@@ -5,6 +5,9 @@ export type ViewId = "overview" | "accounts" | "workflows" | "create" | "jobs";
 
 
 export interface AccountView {
+  maxConcurrency?: number;
+  activeJobCount?: number;
+  externalTaskCount?: number;
   id: string;
   label: string;
   state: AccountState;
@@ -78,6 +81,9 @@ export interface WorkflowParameterView {
 
 
 export interface JobView {
+  displayName?: string;
+  taskName?: string;
+  optimizationTrace?: {model:string;skillName?:string;skillHash?:string;originalText?:string;firstStageText?:string;finalText?:string};
   cancelRequestedAt?: number;
   submission?: { recordedAt: number; workflowId: string; nodeInfoList: Array<{ nodeId: string; fieldName: string; fieldValue: unknown }>; instanceType?: "plus" };
   id: string;
@@ -112,6 +118,7 @@ export interface JobErrorView {
 }
 
 export interface JobInputSnapshotView {
+  taskName?: string;
   production?: { groupId: string; segmentIndex: number };
   workflowId: string;
   profileVersion: number;
@@ -150,6 +157,12 @@ export interface JobOutputView {
 }
 
 export interface CreateJobDraft {
+  taskName?: string;
+  /** Legacy test-version field. */
+  geminiOptimization?: boolean;
+  promptOptimizationEnabled?: boolean;
+  workflowInputs?: Record<string, Record<string, unknown>>;
+  commonInputs?: { duration?: unknown; aspect_ratio?: unknown };
   production?: { groupId: string; segmentIndex: number };
   workflowSnapshot?: WorkflowView;
   workflowId: string;

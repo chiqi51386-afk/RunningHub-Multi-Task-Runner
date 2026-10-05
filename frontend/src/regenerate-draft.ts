@@ -5,6 +5,7 @@ import { compatibleValue, createDraft, setDraftMedia } from "./task-draft.js";
 export function regenerateDraft(input: JobInputSnapshotView, workflow: WorkflowView): CreateJobDraft {
   if (input.workflowId !== workflow.id) throw new Error("原工作流已改变，不能自动恢复输入。");
   let draft = createDraft(workflow);
+  draft.taskName = input.taskName;
   draft.instanceType = input.instanceType === "plus" ? "plus" : "default";
   if (input.production) draft.production = { ...input.production };
   const used = new Set<string>();
@@ -15,6 +16,7 @@ export function regenerateDraft(input: JobInputSnapshotView, workflow: WorkflowV
     return matches[0]!;
   };
   for (const source of input.parameters) {
+    if (!workflow.parameters.some(p => p.key === source.key) && ["58.chunks", "58.seq_threshold", "59.head_chunks"].includes(source.key)) continue;
     const parameter = target(source.key);
     if (source.value === undefined) continue;
     if (parameter.visible === false || parameter.semanticType === "negative_prompt") continue;

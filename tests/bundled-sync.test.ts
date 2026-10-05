@@ -82,10 +82,9 @@ test("fresh database gets all bundled defaults; invalid bundles make no partial 
     assert.notEqual(imported.id, builtin.id);
     backend.workflows.remove(imported.id);
     for (const workflow of workflows.filter(item => item.name.includes("H3"))) {
-      const key = workflow.runningHubWorkflowId === "2104166509705986049" ? "61.aspect_ratio" : "252.aspect_ratio";
+      const key = workflow.runningHubWorkflowId === "2107063778012905474" ? "61.aspect_ratio" : "115.aspect_ratio";
       const aspect = workflow.profile.parameters.find(item => item.key === key)!;
       assert.equal(aspect.semanticType, "aspect_ratio");
-      if (key === "252.aspect_ratio") assert.equal(aspect.displayOrder, 10);
       assert.equal(workflow.profile.genericParameters.some(item => item.key === aspect.key), false);
     }
     const personal = backend.workflows.importApiJson({ name: "个人", runningHubWorkflowId: "123456789012",

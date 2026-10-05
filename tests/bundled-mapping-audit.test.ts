@@ -18,7 +18,7 @@ for (const file of readdirSync("bundled-workflows").filter(file => file.endsWith
       assert.ok(!targets.has(`${p.nodeId}.${p.fieldName}`), `duplicate target ${p.key}`);
       targets.add(`${p.nodeId}.${p.fieldName}`);
     }
-    const view = { id: file, profileVersion: 1, parameters: profile.parameters } as WorkflowView;
+    const view = { id: file, runningHubWorkflowId: pkg.workflow.runningHubWorkflowId, profileVersion: 1, parameters: profile.parameters } as WorkflowView;
     const mode = file.includes("minimax") ? "h3-multi-reference" : "digital-human";
     const prompts = profile.parameters.filter(p => p.visible !== false && p.semanticType === "prompt");
     assert.equal(prompts.length, 1);
@@ -44,7 +44,7 @@ for (const file of readdirSync("bundled-workflows").filter(file => file.endsWith
       }
       assert.ok([...seen].some(id => outputs.has(id)), `Disconnected content: ${p.key}`);
     }
-    if (mode === "h3-multi-reference") assert.deepEqual(media.map(p => p.nodeId), file.includes("selflift")
+    if (mode === "h3-multi-reference") assert.deepEqual(media.map(p => p.nodeId), file.includes("sharp") ? ["150","222","223","240","241","242","243","244","245"] : file.includes("selflift")
       ? ["150", "164", "239", "241", "240", "238"] : ["51", "49", "50", "43", "19", "23"]);
     for (const count of Array.from({ length: media.length + 1 }, (_, index) => index)) {
       const draft = createDraft(view);

@@ -90,7 +90,7 @@ jobs:
           path: |
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-source.zip
-            RELEASE_REVIEW_v0.1.52.md
+            RELEASE_REVIEW_v1.0.0-beta.1.md
             release-build/SHA256SUMS.txt
 
       - name: 生成构建证明
@@ -109,10 +109,11 @@ jobs:
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
           files: |
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-source.zip
-            RELEASE_REVIEW_v0.1.52.md
+            RELEASE_REVIEW_v1.0.0-beta.1.md
             release-build/SHA256SUMS.txt
-          body_path: RELEASE_NOTES_v0.1.52.md
+          body_path: RELEASE_NOTES_v1.0.0-beta.1.md
           name: RunningHub Runner ${{ env.RELEASE_TAG }}

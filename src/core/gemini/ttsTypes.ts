@@ -1,0 +1,78 @@
+export const TTS_MODEL = "gemini-3.8-flash-tts";
+export interface TtsInput { text: string; voice: string; language: string; style: string }
+export interface TtsAudio { localPath: string; fileName: string; previewUrl: string }
+// Google prebuilt voice characteristics and gender: firebase.google.com/docs/ai-logic/generate-speech
+// Clear, even and warm deliveries first; this is editorial ordering, not a measured language ranking.
+export const TTS_VOICES = [
+  ["Erinome","女声","清晰"], ["Iapetus","男声","清晰"],
+  ["Sulafat","女声","温暖"], ["Algieba","男声","平滑"],
+  ["Kore","女声","坚定"], ["Charon","男声","叙述"],
+  ["Vindemiatrix","女声","温柔"], ["Schedar","男声","平稳"],
+  ["Achernar","女声","柔和"], ["Achird","男声","亲切"],
+  ["Zephyr","女声","明亮"], ["Puck","男声","轻快"],
+  ["Leda","女声","年轻"], ["Orus","男声","坚定"],
+  ["Aoede","女声","轻盈"], ["Fenrir","男声","激昂"],
+  ["Callirrhoe","女声","随和"], ["Enceladus","男声","气声"],
+  ["Autonoe","女声","明亮"], ["Umbriel","男声","随和"],
+  ["Despina","女声","平滑"], ["Algenib","男声","沙哑"],
+  ["Laomedeia","女声","轻快"], ["Rasalgethi","男声","叙述"],
+  ["Gacrux","女声","成熟"], ["Alnilam","男声","坚定"],
+  ["Pulcherrima","女声","鲜明"], ["Zubenelgenubi","男声","随性"],
+  ["Sadachbia","男声","活泼"], ["Sadaltager","男声","沉稳"],
+] as const;
+export const TTS_LANGUAGES = [
+  {id:"vi",name:"越南语",direction:"Speak Vietnamese naturally, with accurate Vietnamese tones and clear vowel distinctions. Preserve all names and the exact transcript; do not translate.",sample:"Xin chào! Hôm nay là một ngày thật đẹp. Chúc bạn luôn bình an và hạnh phúc."},
+  {id:"lo",name:"老挝语",direction:"Speak Lao naturally. Respect native phrasing and read the exact transcript without translation.",sample:"ສະບາຍດີ! ຂໍໃຫ້ທ່ານມີຄວາມສຸກ."},
+  {id:"km",name:"高棉语",direction:"Speak Khmer naturally. Respect native phrasing and read the exact transcript without translation.",sample:"សួស្តី! សូមឱ្យអ្នកមានសេចក្តីសុខ។"},
+  {id:"my",name:"缅甸语",direction:"Speak Burmese naturally. Respect native phrasing and read the exact transcript without translation.",sample:"မင်္ဂလာပါ။ ပျော်ရွှင်သောနေ့လေးဖြစ်ပါစေ။"},
+  {id:"ms",name:"马来语",direction:"Speak Malay naturally. Read the exact transcript without translation.",sample:"Selamat sejahtera! Semoga hari anda indah dan penuh kebahagiaan."},
+  {id:"id",name:"印尼语",direction:"Speak Indonesian naturally. Read the exact transcript without translation.",sample:"Halo! Semoga harimu indah dan penuh kebahagiaan."},
+  {id:"fil",name:"菲律宾语",direction:"Speak Filipino naturally. Read the exact transcript without translation.",sample:"Kumusta! Sana ay maging maganda at masaya ang iyong araw."},
+  {id:"hi",name:"印地语",direction:"Speak Hindi naturally. Read the exact transcript without translation.",sample:"नमस्ते! आपका दिन खुशियों से भरा हो।"},
+  {id:"ne",name:"尼泊尔语",direction:"Speak Nepali naturally. Read the exact transcript without translation.",sample:"नमस्ते! तपाईंको दिन सुखमय रहोस्।"},
+  {id:"en",name:"英语",direction:"Speak English naturally. Read the exact transcript without translation.",sample:"Hello! Today is a beautiful day. Wishing you peace and happiness."},
+  {id:"es",name:"西班牙语",direction:"Speak Spanish naturally. Read the exact transcript without translation.",sample:"¡Hola! Que tengas un día lleno de paz y felicidad."},
+  {id:"pt",name:"葡萄牙语",direction:"Speak Portuguese naturally. Read the exact transcript without translation.",sample:"Olá! Desejo a você um dia de paz e felicidade."},
+  {id:"fr",name:"法语",direction:"Speak French naturally. Read the exact transcript without translation.",sample:"Bonjour ! Je vous souhaite une belle journée, pleine de bonheur."},
+  {id:"de",name:"德语",direction:"Speak German naturally. Read the exact transcript without translation.",sample:"Hallo! Ich wünsche dir einen schönen und glücklichen Tag."},
+  {id:"it",name:"意大利语",direction:"Speak Italian naturally. Read the exact transcript without translation.",sample:"Ciao! Ti auguro una giornata serena e felice."},
+  {id:"nl",name:"荷兰语",direction:"Speak Dutch naturally. Read the exact transcript without translation.",sample:"Hallo! Ik wens je een mooie en gelukkige dag."},
+  {id:"pl",name:"波兰语",direction:"Speak Polish naturally. Read the exact transcript without translation.",sample:"Cześć! Życzę ci pięknego i szczęśliwego dnia."},
+  {id:"ru",name:"俄语",direction:"Speak Russian naturally. Read the exact transcript without translation.",sample:"Здравствуйте! Желаю вам прекрасного и счастливого дня."},
+  {id:"uk",name:"乌克兰语",direction:"Speak Ukrainian naturally. Read the exact transcript without translation.",sample:"Вітаю! Бажаю вам гарного та щасливого дня."},
+] as const;
+
+// Editorial usage descriptions based on the official voice traits. Only label age
+// impression when the official descriptor actually supports it; never invent years.
+export const TTS_VOICE_DETAILS:Record<string,{age?:string;description:string}>={
+  Erinome:{description:"吐字清晰，适合对白、解说和需要听清每个字的内容。"},
+  Iapetus:{description:"表达清楚，适合日常对白、教学和信息讲解。"},
+  Sulafat:{description:"温暖、亲和，适合关怀对白、故事和陪伴式旁白。"},
+  Algieba:{description:"声音平滑，适合连贯叙述、对话和较长旁白。"},
+  Kore:{description:"表达坚定，适合有主见的角色对白和清楚有力的解说。"},
+  Charon:{description:"偏叙述和信息表达，适合讲故事、说明和知识解说。"},
+  Vindemiatrix:{description:"语气温柔，适合安慰、关怀对白和柔和旁白。"},
+  Schedar:{description:"声音平稳，适合平静对白、说明和连续叙述。"},
+  Achernar:{description:"声音柔和，适合轻声交流和安静场景的旁白。"},
+  Achird:{description:"亲切、友好，适合自然聊天和轻松讲解。"},
+  Zephyr:{description:"声音明亮，适合轻快对白和积极的内容表达。"},
+  Puck:{description:"轻快、有活力，适合聊天和轻松的角色对白。"},
+  Leda:{age:"青年感",description:"年轻感、轻盈，适合年轻角色和轻松日常对白。"},
+  Orus:{description:"表达坚定，适合有力量的对白和明确的陈述。"},
+  Aoede:{description:"轻盈、轻松，适合生活化对白与随性旁白。"},
+  Fenrir:{description:"容易表现激昂情绪，适合兴奋、有张力的对白。"},
+  Callirrhoe:{description:"随和、放松，适合自然对话与生活类内容。"},
+  Enceladus:{description:"带气声质感，适合轻声、近距离交流的角色。"},
+  Autonoe:{description:"声音明亮，适合积极表达和清爽的日常对白。"},
+  Umbriel:{description:"随和、轻松，适合聊天与自然叙述。"},
+  Despina:{description:"声音平滑，适合流畅对白和叙事旁白。"},
+  Algenib:{description:"带沙哑质感，适合需要粗粝声音特点的角色。"},
+  Laomedeia:{description:"轻快、积极，适合活泼对白和愉快的叙述。"},
+  Rasalgethi:{description:"偏说明和叙述，适合讲解、知识内容与旁白。"},
+  Gacrux:{age:"成熟感",description:"成熟的声音质感，适合稳重角色和从容叙述。"},
+  Alnilam:{description:"表达坚定，适合有主见的对白与清楚的陈述。"},
+  Pulcherrima:{description:"表达鲜明、直接，适合突出态度的角色对白。"},
+  Zubenelgenubi:{description:"随性、放松，适合口语化对白和日常聊天。"},
+  Sadachbia:{description:"活泼、有生气，适合生动对白与轻快叙述。"},
+  Sadaltager:{description:"偏沉稳、知性表达，适合知识解说和讲述。"},
+};

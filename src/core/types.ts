@@ -41,6 +41,9 @@ export type AccountState =
   | "DISABLED";
 
 export interface Account {
+  maxConcurrency?: number;
+  activeJobCount?: number;
+  externalTaskCount?: number;
   id: string;
   label: string;
   enabled: boolean;
@@ -141,8 +144,10 @@ export interface WorkflowProfileParameter extends WorkflowParameter {
 }
 
 export interface WorkflowProfile {
+  promptOptimization?: { model: string; raw: Record<string, unknown>; skill?: import('./gemini/workflowSkills.js').SkillSnapshot; firstStage?: {id:string;name:string;content:string;hash:string}; originalText?:string; firstStageText?:string; finalText?:string };
   downloadNamingRule?: import("./downloads/naming.js").NamingRule;
   downloadIdentity?: { task: number; group?: number; date: string };
+  taskName?: string;
   production?: { groupId: string; segmentIndex: number };
   version: number;
   workflowId: string;
@@ -250,6 +255,8 @@ export interface JobSnapshot {
 export type InstanceType = "default" | "plus";
 
 export type JobStatus =
+  | "OPTIMIZE_PENDING"
+  | "OPTIMIZING"
   | "PENDING"
   | "ASSIGNED"
   | "UPLOADING"
@@ -284,7 +291,7 @@ export type JobErrorCode =
   | "SUBMIT_UNKNOWN"
   | "UNKNOWN";
 
-export type JobPhase = "account" | "upload" | "submit" | "query" | "download" | "cancel" | "recovery";
+export type JobPhase = "account" | "upload" | "submit" | "query" | "download" | "cancel" | "recovery" | "optimize";
 
 export interface JobError {
   code: JobErrorCode;
@@ -337,6 +344,8 @@ export interface Job extends JobSnapshot {
 }
 
 export interface CreateJobInput {
+  taskName?: string;
+  promptOptimization?: { model: string; skill?: import('./gemini/workflowSkills.js').SkillSnapshot; originalText?:string; firstStage?: {id:string;name:string;content:string;hash:string} };
   production?: { groupId: string; segmentIndex: number };
   namingRule?: import("./downloads/naming.js").NamingRule;
   workflowId: string;

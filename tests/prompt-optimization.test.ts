@@ -11,9 +11,9 @@ import type { WorkflowView } from "../frontend/src/types.js";
 for (const [file, id, promptNode, field, consumer] of [
   ["minimax-h3-multi-reference", "2104088262948556801", "325", "text", "265"],
   ["minimax-h3-selflift", "2104087390590894081", "232", "value", "136"],
-]) {
+] as const) {
   test(file + ": optimizer switch maps independently and defaults off", () => {
-    const pkg = parsePortableWorkflowPackage(JSON.parse(readFileSync(`bundled-workflows/${file}.rhworkflow.json`, "utf8")));
+    const pkg = parsePortableWorkflowPackage(JSON.parse(readFileSync(`${["ltx-2.3-digital-human","minimax-h3-multi-reference","minimax-h3-selflift"].includes(file)?"tests/fixtures/retired-workflows":"bundled-workflows"}/${file}.rhworkflow.json`, "utf8")));
     const profile = materializePortableProfile(pkg, file!, 1);
     const view = { id: file, name: pkg.workflow.name, runningHubWorkflowId: id, profileVersion: 1, parameters: profile.parameters } as WorkflowView;
     assert.equal(pkg.workflow.runningHubWorkflowId, id);

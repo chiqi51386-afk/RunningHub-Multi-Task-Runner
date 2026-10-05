@@ -1,7 +1,29 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("runningHub", {
+  skills: {
+    settings: id => ipcRenderer.invoke('skills:settings',id),
+    select: (id,skillId) => ipcRenderer.invoke('skills:select',id,skillId),
+    import: id => ipcRenderer.invoke('skills:import',id),
+  },
+  tts: {
+    optimize: (id, input) => ipcRenderer.invoke("tts:optimize", id, input),
+    generate: (id, input, preview) => ipcRenderer.invoke("tts:generate", id, input, preview),
+    cancel: id => ipcRenderer.invoke("tts:cancel", id),
+    save: localPath => ipcRenderer.invoke("tts:save", localPath),
+  },
+  gemini: {
+    settings: () => ipcRenderer.invoke("gemini:settings"),
+    addKeys: keys => ipcRenderer.invoke("gemini:addKeys", keys),
+    setOptimizationEnabled: enabled => ipcRenderer.invoke("gemini:setOptimizationEnabled", enabled),
+    setModel: model => ipcRenderer.invoke("gemini:setModel", model),
+    setEnabled: (id, enabled) => ipcRenderer.invoke("gemini:setEnabled", id, enabled),
+    remove: id => ipcRenderer.invoke("gemini:remove", id),
+    test: id => ipcRenderer.invoke("gemini:test", id),
+    copyKeysUrl: () => ipcRenderer.invoke("gemini:copyKeysUrl"),
+  },
   accounts: {
+    setConcurrency: (id, value) => ipcRenderer.invoke("accounts:setConcurrency", id, value),
     list: () => ipcRenderer.invoke("accounts:list"),
     add: input => ipcRenderer.invoke("accounts:add", input),
     updateKey: input => ipcRenderer.invoke("accounts:updateKey", input),

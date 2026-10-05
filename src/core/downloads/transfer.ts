@@ -1,5 +1,5 @@
-import { createWriteStream } from "node:fs";
-import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { constants, createWriteStream } from "node:fs";
+import { copyFile, link, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -84,9 +84,9 @@ export async function downloadFile(fetchImpl: typeof fetch, config: RunningHubCo
     requestSignal.throwIfAborted();
     if (total !== undefined && received !== total) throw new Error(`下载文件不完整：${received}/${total} 字节，将自动重试。`);
     clearTimeout(timer);
-    await rename(temp, destination);
+    const savedPath = await publishWithoutOverwrite(temp, destination);
     await unlink(metadata).catch(() => undefined);
-    return destination;
+    return savedPath;
   } catch (error) {
     const cancelled = signal?.aborted && /cancelled by user/i.test(String(signal.reason));
     if (!canResume || cancelled) await discard();
@@ -94,4 +94,24 @@ export async function downloadFile(fetchImpl: typeof fetch, config: RunningHubCo
     const detail = classifyRunningHubError({ message: controller.signal.aborted ? controller.signal.reason : error, phase: "download" });
     throw new RunningHubError(detail.message, detail, error);
   } finally { clearTimeout(timer); }
+}
+
+// Exclusive publication avoids both overwrites and check-then-rename races.
+async function publishWithoutOverwrite(temp: string, destination: string): Promise<string> {
+  const ext = path.extname(destination);
+  const stem = destination.slice(0, destination.length - ext.length);
+  for (let suffix = 0; ; suffix++) {
+    const candidate = suffix ? `${stem} (${suffix})${ext}` : destination;
+    try {
+      try { await link(temp, candidate); }
+      catch (error) {
+        if (!["EXDEV", "EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+        await copyFile(temp, candidate, constants.COPYFILE_EXCL);
+      }
+      await unlink(temp).catch(() => undefined);
+      return candidate;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+  }
 }

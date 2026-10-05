@@ -27,12 +27,17 @@ export class AccountPool {
   remove(id: string): boolean {
     const account = this.db.getAccount(id);
     if (!account) return false;
-    if (account.currentJobId) throw new Error("该账号仍关联执行中的任务；请先等待、取消任务，或让远端任务结束后再删除。");
+    if (account.currentJobId || account.activeJobCount) throw new Error("该账号仍关联执行中的任务；请先等待、取消任务，或让远端任务结束后再删除。");
     return this.db.removeAccount(id);
   }
   updateKey(id: string, apiKey: string): Account {
     const account = this.db.updateAccountKey(id, apiKey);
     this.events.emit("account.updated", account);
+    return account;
+  }
+  setConcurrency(id:string,value:unknown): Account {
+    const account=this.db.setAccountConcurrency(id,value);
+    this.events.emit("account.updated",account);
     return account;
   }
   list(): Account[] { return this.db.listAccounts(); }
@@ -86,6 +91,7 @@ export class AccountPool {
 
     try {
       const { client } = this.clientFor(id);
+      const knownBefore = new Set(this.db.activeAccountJobs(id).filter(j=>j.remoteTaskId).map(j=>j.id));
       const status = await client.accountStatus();
       const now = Date.now();
       const balanceNumber = Number(status.balance ?? "0");
@@ -95,36 +101,36 @@ export class AccountPool {
       let state: Account["state"];
       let autoDisabled = false;
       let reason: string | null = null;
-      if (current.currentJobId) state = "BUSY";
-      else if (!status.valid) { state = "INVALID_KEY"; autoDisabled = true; reason = "invalid_key"; }
+      if (!status.valid) { state = "INVALID_KEY"; autoDisabled = true; reason = "invalid_key"; }
       else if (status.coins !== undefined
         ? Number.isFinite(coinsNumber) && coinsNumber <= 0
         : status.balance !== undefined && Number.isFinite(balanceNumber) && balanceNumber <= 0) {
         state = "NO_BALANCE"; autoDisabled = true; reason = "no_balance";
       }
-      else if (remoteCount > 0) state = "REMOTE_BUSY";
-      else state = "IDLE";
+      else if ((current.activeJobCount ?? 0) + Math.max(0,remoteCount-this.db.activeAccountJobs(id).filter(j=>j.remoteTaskId && knownBefore.has(j.id)).length) >= (current.maxConcurrency ?? 1)) state = "REMOTE_BUSY";
+      else state = current.activeJobCount ? "BUSY" : "IDLE";
       account = this.db.updateAccount(id, {
         state, autoDisabled, autoDisabledReason: reason,
         cooldownUntil: null,
         balance: status.balance ?? null, coins: status.coins ?? null,
+        externalTaskCount: Math.max(0,remoteCount-this.db.activeAccountJobs(id).filter(j=>j.remoteTaskId && knownBefore.has(j.id)).length),
         remoteTaskCount: remoteCount, apiType: status.apiType ?? null, lastCheckedAt: now,
       });
     } catch (error) {
       const current = this.db.getAccount(id)!;
       if (error instanceof SecretStorageError || (error instanceof Error && /decrypt|safeStorage|Encrypted API key|not plaintext|API key storage/i.test(error.message))) {
         account = this.db.updateAccount(id, {
-          state: current.currentJobId ? "BUSY" : "SECRET_UNREADABLE",
+          state: "SECRET_UNREADABLE",
           lastErrorAt: Date.now(), lastCheckedAt: Date.now(),
         });
       } else if (error instanceof RunningHubError && error.detail.code === "ACCOUNT_INVALID_KEY") {
         account = this.db.updateAccount(id, {
-          state: current.currentJobId ? "BUSY" : "INVALID_KEY", autoDisabled: true,
+          state: "INVALID_KEY", autoDisabled: true,
           autoDisabledReason: "invalid_key", lastErrorAt: Date.now(), lastCheckedAt: Date.now(),
         });
       } else {
         account = this.db.updateAccount(id, {
-          state: current.currentJobId ? "BUSY" : "TEMP_UNAVAILABLE",
+          state: "TEMP_UNAVAILABLE",
           lastErrorAt: Date.now(), lastCheckedAt: Date.now(),
         });
       }

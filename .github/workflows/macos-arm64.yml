@@ -73,6 +73,7 @@ jobs:
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
           files: |
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-macos-arm64.zip
             release-build/SHA256SUMS-macos-arm64.txt

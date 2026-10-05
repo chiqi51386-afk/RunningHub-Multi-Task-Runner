@@ -1,12 +1,13 @@
 import { app, BrowserWindow, dialog, ipcMain as electronIpcMain, nativeImage, shell, safeStorage, clipboard } from "electron";
 import type { IpcMainInvokeEvent } from "electron";
 import { focusExistingWindow } from "./windowLifecycle.js";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { resolveMediaInputs } from "../core/workflows/mediaInputs.js";
 import { MV_WORKFLOW_ID, validateMvInput } from "../core/workflows/mvValidation.js";
 import { syncBundledWorkflows } from "../core/workflows/bundled.js";
-import { namingRule, shortOutputPath, type NamingRule } from "../core/downloads/naming.js";
+import { jobOutputPath, namingRule, shortOutputPath, type NamingRule } from "../core/downloads/naming.js";
 import { spawn } from "node:child_process";
+import { safeOutputExtension } from "../core/runninghub/client.js";
 import { createWriteStream, mkdtempSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -16,11 +17,21 @@ import { pipeline } from "node:stream/promises";
 import { RunningHubBackend } from "../core/index.js";
 import { InMemorySecretStore } from "../core/secretStore.js";
 import { SystemSecretStore, migratePlaintextKeys } from "../core/secureSecrets.js";
+import { GeminiStore } from "../core/gemini/store.js";
+import { GeminiPool } from "../core/gemini/pool.js";
+import {WorkflowSkillStore} from "../core/gemini/workflowSkills.js";
+import { selectOptimization } from "../core/gemini/selection.js";
+import { optimizeH3 } from "../core/gemini/h3Optimizer.js";
+import { TTS_LANGUAGES, type TtsInput } from "../core/gemini/ttsTypes.js";
+import { optimizeTtsTranscript } from "../core/gemini/ttsOptimize.js";
 import type { Account, CreateJobInput, InstanceType, Job, WorkflowProfile, WorkflowRecord } from "../core/types.js";
 import { latestReleaseApiUrls, latestReleaseUrl, parseLatestRelease, trustedUpdateAssetPrefixes, updateRepositoryUrl } from "./updates.js";
 import type { UpdateInfo, UpdateProgress } from "./updates.js";
 
 interface RendererDraft {
+  taskName?: string;
+  geminiOptimization?: boolean;
+  promptOptimizationEnabled?: boolean;
   production?: { groupId: string; segmentIndex: number };
   workflowId: string;
   profileVersion: number;
@@ -30,6 +41,9 @@ interface RendererDraft {
 }
 
 let backend: RunningHubBackend;
+let gemini: GeminiPool;
+let workflowSkills: WorkflowSkillStore;
+const ttsRequests = new Map<string, AbortController>();
 const smokeMode = process.argv.includes("--smoke");
 if (smokeMode) app.setPath("userData", mkdtempSync(path.join(app.getPath("temp"), "rh-desktop-smoke-")));
 else app.setPath("userData", path.join(app.getPath("appData"), "runninghub-multi-task-runner-core"));
@@ -276,7 +290,7 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
 
 function accountView(account: Account) {
-  return { id: account.id, label: account.label, state: account.state, coins: account.coins ?? account.balance, apiType: account.apiType, enabled: account.enabled, lastCheckedAt: account.lastCheckedAt, currentJobId: account.currentJobId, remoteTaskCount: account.lastRemoteTaskCount };
+  return { id: account.id, maxConcurrency:account.maxConcurrency??1,activeJobCount:account.activeJobCount??0,externalTaskCount:account.externalTaskCount??0,label: account.label, state: account.state, coins: account.coins ?? account.balance, apiType: account.apiType, enabled: account.enabled, lastCheckedAt: account.lastCheckedAt, currentJobId: account.currentJobId, remoteTaskCount: account.lastRemoteTaskCount };
 }
 
 function workflowView(workflow: WorkflowRecord) {
@@ -292,6 +306,7 @@ function workflowView(workflow: WorkflowRecord) {
 }
 
 const stageByStatus: Record<Job["status"], string> = {
+  OPTIMIZE_PENDING: "等待生成词优化", OPTIMIZING: "正在优化生成词",
   PENDING: "等待调度", ASSIGNED: "已分配账号", UPLOADING: "上传媒体", SUBMITTING: "提交任务",
   SUBMIT_UNKNOWN: "提交状态未知", REMOTE_QUEUED: "远端排队", RUNNING: "生成中", REMOTE_SUCCESS: "远端已完成",
   DOWNLOAD_PENDING: "等待下载", DOWNLOADING: "下载中", COMPLETED: "已完成", FAILED: "失败",
@@ -316,8 +331,9 @@ function jobView(job: Job) {
     };
   });
   return {
-    id: job.id, workflowName: job.workflowName, status: job.status, accountLabel: account?.label,
+    id: job.id, displayName: path.basename(job.outputs?.files[0]?.localPath || jobOutputPath(job,0,job.outputs?.files.length || 1,job.outputs?.files[0]?.url || "",job.outputs?.files[0] ? safeOutputExtension(job.outputs.files[0]) : "mp4")), taskName: job.profileSnapshot.taskName, workflowName: job.workflowName, status: job.status, accountLabel: account?.label,
     cancelRequestedAt: job.cancelRequestedAt,
+    optimizationTrace: job.profileSnapshot.promptOptimization ? {model:job.profileSnapshot.promptOptimization.model,skillName:job.profileSnapshot.promptOptimization.skill?.name,skillHash:job.profileSnapshot.promptOptimization.skill?.hash,originalText:job.profileSnapshot.promptOptimization.originalText,firstStageText:job.profileSnapshot.promptOptimization.firstStageText,finalText:job.profileSnapshot.promptOptimization.finalText}:undefined,
     submission: job.submission,
     instanceType: job.instanceType,
     remoteTaskId: job.remoteTaskId, createdAt: job.createdAt, startedAt: job.assignedAt, completedAt: job.completedAt,
@@ -335,6 +351,7 @@ function jobView(job: Job) {
     texts: job.outputs?.texts,
     inputs: {
       production: job.profileSnapshot.production,
+      taskName: job.profileSnapshot.taskName,
       workflowId: job.workflowId,
       profileVersion: job.profileVersion,
       instanceType: job.instanceType,
@@ -359,11 +376,10 @@ function jobView(job: Job) {
 
 async function seedBundledWorkflows(): Promise<void> {
   const files = [
-    "minimax-h3-multi-reference.rhworkflow.json",
-    "minimax-h3-selflift.rhworkflow.json",
+    "minimax-h3-sharp.rhworkflow.json",
     "h3-digital-human-mv.rhworkflow.json",
     "infinitetalk-digital-human.rhworkflow.json",
-    "ltx-2.3-digital-human.rhworkflow.json",
+    "h3-first-last.rhworkflow.json",
   ];
   const moduleRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
   const candidates = [...new Set([app.getAppPath(), moduleRoot, process.cwd()])];
@@ -406,7 +422,12 @@ function createJobInput(draft: RendererDraft, outputDir: string): CreateJobInput
   // only on the process-wide setting makes recovered jobs vulnerable to a
   // restart or a later settings change and can silently fall back to the
   // Electron user-data downloads folder.
-  return { workflowId: draft.workflowId, ...resolved, production: draft.production, instanceType: draft.instanceType === "plus" ? "plus" : "default", outputDir };
+  const settings=gemini.store.settings();
+  const selection=selectOptimization(workflow,resolved.parameters,draft.promptOptimizationEnabled ?? draft.geminiOptimization,settings.optimizationEnabled,settings.model);
+  const referenceMode=workflow.runningHubWorkflowId!=="2106994828660080641" && resolved.media.length>0;
+  const prompt=workflow.profile.parameters.find(p=>p.semanticType==='prompt'&&p.visible!==false);
+  const promptOptimization=selection ? {...selection,skill:workflowSkills.snapshot(workflow.runningHubWorkflowId,referenceMode),originalText:String(prompt?resolved.parameters[prompt.id]??'':'')} : undefined;
+  return { workflowId: draft.workflowId, taskName:draft.taskName, ...resolved, promptOptimization, production: draft.production, instanceType: draft.instanceType === "plus" ? "plus" : "default", outputDir };
 }
 
 async function currentOutputDir(): Promise<string> {
@@ -429,7 +450,78 @@ function registerHandlers(): void {
     await saveDesktopSettings({ ...(await readDesktopSettings()), namingRule: rule });
     return namingPreview(rule);
   });
+  ipcMain.handle("accounts:setConcurrency", (_event,id:string,value:unknown)=>accountView(backend.accounts.setConcurrency(id,value)));
   ipcMain.handle("accounts:list", () => backend.accounts.list().map(accountView));
+  ipcMain.handle("gemini:setOptimizationEnabled", (_event, enabled: unknown) => gemini.store.setOptimizationEnabled(enabled));
+  const skillWorkflow=(id:unknown)=>{
+    if(typeof id!=='string')throw Error('工作流无效');
+    const workflow=backend.workflows.get(id);
+    if(!workflow)throw Error('工作流不存在');
+    return workflow.runningHubWorkflowId;
+  };
+  ipcMain.handle("skills:settings", (_event,id:unknown)=>workflowSkills.settings(skillWorkflow(id)));
+  ipcMain.handle("skills:select", (_event,id:unknown,skillId:unknown)=>workflowSkills.select(skillWorkflow(id),skillId));
+  ipcMain.handle("skills:import", async (_event,id:unknown)=>{
+    const workflowId=skillWorkflow(id);
+    workflowSkills.settings(workflowId);
+    const options={title:'加载生成词 Skill',properties:['openFile'] as ('openFile')[],filters:[{name:'Skill 文本',extensions:['md','txt']}]};
+    const result=mainWindow?await dialog.showOpenDialog(mainWindow,options):await dialog.showOpenDialog(options);
+    if(result.canceled||!result.filePaths[0])return undefined;
+    const file=result.filePaths[0],info=await stat(file);
+    if(!info.isFile()||info.size>256*1024||!['.md','.txt'].includes(path.extname(file).toLowerCase()))throw Error('请选择 256 KB 以内的 .md/.txt 文件');
+    const content=new TextDecoder('utf-8',{fatal:true}).decode(await readFile(file));
+    return workflowSkills.import(workflowId,path.basename(file),content);
+  });
+  ipcMain.handle("gemini:settings", () => gemini.store.settings());
+  ipcMain.handle("tts:generate", async (_event, id: string, input: TtsInput, preview: boolean) => {
+    if(typeof id!=="string" || !/^[a-zA-Z0-9-]{1,80}$/.test(id) || ttsRequests.has(id) || ttsRequests.size>=2)throw new Error("语音请求正在处理，请稍后再试。");
+    const request=structuredClone(input);
+    if(preview===true){
+      const language=TTS_LANGUAGES.find(l=>l.id===request.language);
+      if(!language)throw new Error("请选择语言。");
+      request.text=language.sample;request.style="";
+    }
+    const controller=new AbortController();ttsRequests.set(id,controller);
+    try{
+      const directory=path.join(app.getPath("userData"),"tts-audio");
+      const name=preview===true?`sample-${createHash("sha256").update(JSON.stringify(request)).digest("hex").slice(0,24)}.wav`:`tts-${randomUUID()}.wav`;
+      const localPath=path.join(directory,name);
+      const cached=preview===true && await stat(localPath).then(s=>s.size>44).catch(()=>false);
+      if(!cached){
+        const result=await gemini.speech(request,controller.signal);
+        controller.signal.throwIfAborted();
+        await mkdir(directory,{recursive:true});
+        await writeFile(localPath,Buffer.from(result.text,"base64"));
+      }
+      return {localPath,fileName:name,previewUrl:pathToFileURL(localPath).toString()};
+    }finally{ttsRequests.delete(id);}
+  });
+  ipcMain.handle("tts:cancel", (_event, id:string) => {ttsRequests.get(id)?.abort();});
+  ipcMain.handle("tts:optimize", async (_event,id:string,input:{text:string;language:string})=>{
+    if(typeof id!=="string"||!/^[a-zA-Z0-9-]{1,80}$/.test(id)||ttsRequests.has(id)||ttsRequests.size>=2)throw new Error("请求正在处理，请稍后再试。");
+    const controller=new AbortController();ttsRequests.set(id,controller);
+    try{return await optimizeTtsTranscript(gemini,structuredClone(input),controller.signal);}
+    finally{ttsRequests.delete(id);}
+  });
+  ipcMain.handle("tts:save", async (_event, localPath:string) => {
+    const directory=await realpath(path.join(app.getPath("userData"),"tts-audio"));
+    if(typeof localPath!=="string")throw new Error("音频路径无效。");
+    const source=await realpath(localPath);
+    if(path.dirname(source)!==directory || !/^tts-[a-f0-9-]+\.wav$/.test(path.basename(source)))throw new Error("请选择已生成的音频。");
+    const options={defaultPath:path.join(app.getPath("downloads"),path.basename(source)),filters:[{name:"WAV 音频",extensions:["wav"]}]};
+    const result=mainWindow?await dialog.showSaveDialog(mainWindow,options):await dialog.showSaveDialog(options);
+    if(result.canceled || !result.filePath)return false;
+    await writeFile(result.filePath,await readFile(source));return true;
+  });
+  ipcMain.handle("gemini:addKeys", (_event, keys: unknown) => gemini.store.add(keys));
+  ipcMain.handle("gemini:setModel", (_event, model: unknown) => gemini.store.setModel(model));
+  ipcMain.handle("gemini:setEnabled", (_event, id: string, enabled: boolean) => gemini.store.setEnabled(id,enabled));
+  ipcMain.handle("gemini:remove", (_event, id: string) => gemini.store.remove(id));
+  ipcMain.handle("gemini:test", (_event, id?: string) => {
+    if (id !== undefined && (typeof id !== "string" || !id)) throw new Error("无效的 Key 编号。");
+    return gemini.test(id);
+  });
+  ipcMain.handle("gemini:copyKeysUrl", () => clipboard.writeText("https://aistudio.google.com/apikey"));
   ipcMain.handle("accounts:add", (_event, input: { label: string; apiKey: string }) => accountView(backend.accounts.add(input.label, input.apiKey)));
   ipcMain.handle("accounts:updateKey", (_event, input: { id: string; apiKey: string }) => accountView(backend.accounts.updateKey(input.id, input.apiKey)));
   ipcMain.handle("accounts:refresh", async (_event, id: string) => accountView(await backend.accounts.refresh(id)));
@@ -571,6 +663,7 @@ async function createWindow(): Promise<BrowserWindow> {
     .then(() => app.getAppPath()).catch(() => moduleRoot);
   const preload = path.resolve(applicationRoot, "desktop", "preload.cjs");
   const window = new BrowserWindow({
+    icon: path.join(applicationRoot, "desktop", "assets", process.platform === "win32" ? "icon.ico" : "icon.png"),
     width: 1440, height: 940, minWidth: 980, minHeight: 680,
     backgroundColor: "#080c12", show: false,
     webPreferences: { preload, contextIsolation: true, nodeIntegration: false, sandbox: true, webviewTag: false },
@@ -608,6 +701,40 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
     config: { apiHost: "https://www.runninghub.ai", outputDir },
   });
   if (secretStore instanceof SystemSecretStore) migratePlaintextKeys(backend.database.raw, secretStore);
+  gemini = new GeminiPool(new GeminiStore(backend.database.raw,secretStore));
+  workflowSkills = new WorkflowSkillStore(backend.database.raw);
+  backend.scheduler.optimizePrompt = async (job,signal) => {
+    const optimization=job.profileSnapshot.promptOptimization;
+    if(!optimization)throw new Error('任务缺少优化配置');
+    const workflow: WorkflowRecord={id:job.workflowId,name:job.workflowName,runningHubWorkflowId:job.runningHubWorkflowId,raw:optimization.raw,profile:job.profileSnapshot,profileVersion:job.profileVersion,workflowHash:'snapshot',createdAt:job.createdAt,updatedAt:job.createdAt};
+    return optimizeH3(workflow,{workflowId:job.workflowId,parameters:job.parameters,media:job.media},gemini,async localPath=>{
+      signal.throwIfAborted();
+      if(!path.isAbsolute(localPath))throw new Error('图片路径无效');
+      const info=await stat(localPath);
+      if(!info.isFile()||info.size>20*1024*1024)throw new Error('参考图过大或不是文件');
+      const image=nativeImage.createFromBuffer(await readFile(localPath));
+      if(image.isEmpty())throw new Error('无法读取参考图片');
+      const size=image.getSize(),scale=Math.min(1,1280/Math.max(size.width,size.height));
+      const resized=scale<1?image.resize({width:Math.max(1,Math.round(size.width*scale)),height:Math.max(1,Math.round(size.height*scale))}):image;
+      return {mimeType:'image/jpeg',data:resized.toJPEG(85).toString('base64')};
+    },signal,optimization.model,async state=>{
+      signal.throwIfAborted();
+      const current=backend.jobs.get(job.id);
+      if(current?.status!=="OPTIMIZING")throw new Error("任务已停止");
+      backend.database.updateJob(job.id,{profileSnapshot:{...current.profileSnapshot,promptOptimization:structuredClone(state)}});
+      backend.events.emit('job.updated',backend.jobs.get(job.id)!);
+    },async localPath=>{
+      signal.throwIfAborted();
+      if(!path.isAbsolute(localPath))throw new Error('音频路径无效');
+      const info=await stat(localPath);
+      if(!info.isFile()||info.size>13*1024*1024)throw new Error('优化音频过大，请转换为 MP3 后再试；未提交视频任务。');
+      const mimeTypes:Record<string,string>={'.wav':'audio/wav','.mp3':'audio/mpeg','.aac':'audio/aac','.flac':'audio/flac','.ogg':'audio/ogg','.m4a':'audio/mp4'};
+      const mimeType=mimeTypes[path.extname(localPath).toLowerCase()];
+      if(!mimeType)throw new Error('生成词优化暂不支持此音频格式，请使用 MP3 或 WAV。');
+      const data=await readFile(localPath,{signal});
+      return {mimeType,data:data.toString('base64')};
+    });
+  };
   await seedBundledWorkflows();
   registerHandlers();
   const window = await createWindow();
@@ -684,6 +811,76 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       if (!buttons[1].textContent.includes('8 秒')) throw new Error('Keyboard selection failed: ' + buttons[1].textContent + ', expanded=' + buttons[1].getAttribute('aria-expanded') + ', opened=' + debugOpen + ', end=' + debugEnd + ', scroll=' + JSON.stringify(scrollEvents));
     })()`);
     console.log('DESKTOP_DROPDOWN_PASS');
+    const googleSettings = await window.webContents.executeJavaScript(`(async () => {
+      const api = window.runningHub.gemini;
+      if (!api || (await api.settings()).model !== 'gemini-3.5-flash-lite') throw new Error('Google settings bridge missing');
+      if(document.querySelector('.settings-modal .gemini-settings'))throw new Error('Gemini must not be in settings');
+      document.querySelector('.settings-modal button[aria-label="关闭"]').click();
+      [...document.querySelectorAll('.nav-list button')].find(b=>b.textContent==='账号池').click();
+      await new Promise(r=>setTimeout(r,150));
+      document.querySelector('#gemini-tab').click();
+      const testAccount=await window.runningHub.accounts.add({label:'并发界面测试',apiKey:'smoke-concurrency-not-a-real-key'});
+      document.querySelector('#runninghub-tab').click();
+      await new Promise(r=>setTimeout(r,150));
+      const concurrency=document.querySelector('[aria-label="并发界面测试 最大并发"]');
+      if(!concurrency || document.querySelectorAll('.account-table .table-header > span').length!==6)throw Error('Concurrency column missing');
+      concurrency.click();await new Promise(r=>setTimeout(r,100));
+      [...document.querySelectorAll('.app-select-options [role="option"]')].find(b=>b.textContent==='3 路').click();
+      await new Promise(r=>setTimeout(r,200));
+      if((await window.runningHub.accounts.list()).find(a=>a.id===testAccount.id).maxConcurrency!==3)throw Error('Concurrency setting did not persist');
+      await window.runningHub.accounts.remove(testAccount.id);
+      document.querySelector('#gemini-tab').click();
+      await new Promise(r=>setTimeout(r,150));
+      if(!document.querySelector('#runninghub-panel').hidden || document.querySelector('#gemini-panel').hidden)throw new Error('Account platform tabs failed');
+      const root = document.querySelector('.gemini-settings');
+      if (!root) throw new Error('Google settings UI missing');
+      const globalSwitch=root.querySelector('button[aria-label="开启 Gemini 生成词优化"]');
+      if(globalSwitch)throw new Error('Obsolete global optimizer switch remains');
+      const select=root.querySelector('[aria-label="Gemini 模型"]');
+      const skillSelect=root.querySelector('[aria-label="第一阶段 Skill"]');
+      if(skillSelect)throw new Error('Obsolete first-stage selector remains');
+      for(const [label,id] of [['Gemini 3.8 Flash','gemini-3.8-flash'],['Gemini 3.7 Flash','gemini-3.7-flash'],['Gemini 3.5 Flash-Lite','gemini-3.5-flash-lite']]) {
+        select.click(); await new Promise(r=>setTimeout(r,100));
+        const options=[...document.querySelectorAll('.app-select-options [role="option"]')];
+        if(options.length!==3)throw new Error('Gemini model choices missing');
+        options.find(b=>b.textContent===label).click(); await new Promise(r=>setTimeout(r,100));
+        if((await api.settings()).model===id)throw new Error('Model changed before save');
+        [...root.querySelectorAll('button')].find(b=>b.textContent==='保存模型').click();
+        for(let i=0;i<50&&((await api.settings()).model!==id || select.disabled);i++)await new Promise(r=>setTimeout(r,100));
+        if((await api.settings()).model!==id || !select.textContent.includes(label))throw new Error('Model selection persistence failed');
+      }
+      const input = root.querySelector('textarea');
+      const value = 'AIza-smoke-not-a-real-key-123456789';
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,value+'\\n'+value);
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+      await new Promise(r=>setTimeout(r,100));
+      [...root.querySelectorAll('button')].find(b=>b.textContent==='添加').click();
+      for(let i=0;i<50&&!root.querySelector('.gemini-key-row');i++)await new Promise(r=>setTimeout(r,100));
+      if(root.querySelectorAll('.gemini-key-row').length!==1 || root.textContent.includes(value))throw new Error('Google add/dedup/masking failed');
+      if(input.value!=='')throw new Error('Google input not cleared after save');
+      const row=root.querySelector('.gemini-key-row');
+      row.querySelector('.switch').click();
+      for(let i=0;i<50&&(await api.settings()).keys[0].enabled;i++)await new Promise(r=>setTimeout(r,100));
+      if((await api.settings()).keys[0].enabled)throw new Error('Google disable failed');
+      root.scrollIntoView({block:'start',behavior:'instant'});
+      return true;
+    })()`);
+    console.log(googleSettings ? 'DESKTOP_GOOGLE_SETTINGS_PASS' : 'DESKTOP_GOOGLE_SETTINGS_FAIL');
+    if (process.argv.includes('--preview-gemini')) {
+      window.show();
+      window.webContents.invalidate();
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await writeFile(path.join(app.getPath('temp'),'rh-google-settings.png'),(await window.webContents.capturePage()).toPNG());
+    }
+    await window.webContents.executeJavaScript(`(async () => {
+      const root=document.querySelector('.gemini-settings');
+      for(let i=0;i<50&&root.querySelector('.gemini-key-row .icon-button').disabled;i++)await new Promise(r=>setTimeout(r,100));
+      root.querySelector('.gemini-key-row .icon-button').click();
+      for(let i=0;i<50&&(await window.runningHub.gemini.settings()).keys.length;i++)await new Promise(r=>setTimeout(r,100));
+      if((await window.runningHub.gemini.settings()).keys.length)throw new Error('Google remove failed');
+      document.querySelector('.settings-button').click();
+      for(let i=0;i<50&&!document.querySelector('.settings-modal');i++)await new Promise(r=>setTimeout(r,100));
+    })()`);
     const themesPassed = await window.webContents.executeJavaScript(`(async () => {
       const ids = ['light', 'dark', 'eye', 'midnight'];
       const cards = [...document.querySelectorAll('.theme-card')];
@@ -708,31 +905,46 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       document.querySelector('.settings-modal .modal-head button')?.click();
       [...document.querySelectorAll('.nav-list button')].find(button => button.textContent.includes('创建任务'))?.click();
       await wait();
-      [...document.querySelectorAll('.create-mode-tabs button')].find(button => button.textContent.includes('H3'))?.click();
+      [...document.querySelectorAll('.create-mode-tabs button')].find(button => button.textContent === 'H3多参考')?.click();
       await wait();
-      for (let index = 0; index < 2; index++) {
-        const workspace = document.querySelector('.create-mode-panel:not([hidden])');
-        if (!workspace) return false;
-        workspace.querySelector('[role="combobox"]')?.click();
-        await wait();
-        const options = workspace.querySelectorAll('[role="option"]');
-        if (options.length !== 2) return false;
-        options[index].click();
-        await wait();
-        const optimization = workspace.querySelector('button[aria-label="中文生成词优化"]');
-        if (!optimization || optimization.getAttribute('aria-pressed') !== 'false') return false;
-        const imageSlots = [...workspace.querySelectorAll('.mv-media .media-field')];
-        if (imageSlots.length !== 2 || imageSlots.some((slot, i) => slot.querySelector('.media-head strong')?.textContent !== '图片 ' + (i + 1))) throw new Error('H3 image slot numbering mismatch');
-        for (const slot of imageSlots) {
-          const dropzone = slot.querySelector('.compact-dropzone');
-          if (!dropzone || getComputedStyle(dropzone, '::after').content !== '"+"') throw new Error('H3 must use MV add-image style');
-        }
-        const section = [...workspace.querySelectorAll('.form-section')].find(element => element.querySelector('h2')?.textContent === '生成参数');
-        const labels = [...(section?.querySelectorAll('.dynamic-grid > label') ?? [])];
-        const names = labels.map(element => element.textContent);
-        if (names.length !== 4 || !names[0].includes('画面比例') || !names[1].includes('时长') || !names[2].includes('分辨率') || !/倍率|倍数|低分辨率阶段比例/.test(names[3])) throw new Error('H3 layout mismatch: ' + JSON.stringify(names));
-        if (labels.some(label => { const input = label.querySelector('input'); return input && input.value === ''; })) throw new Error('Upgrade left generation parameters empty');
+      const workspace = document.querySelector('.create-mode-panel:not([hidden])');
+      if(workspace.textContent.includes('选择工作流'))throw Error('Fixed workflow picker still visible');
+      if(document.querySelectorAll('.create-mode-tabs button').length!==5)throw Error('Personal workflow module must be hidden without imports');
+      const moduleNames=[...document.querySelectorAll('.create-mode-tabs button')].map(button=>button.textContent);
+      if(moduleNames[4]!=='Gemini TTS')throw Error('Module order incorrect');
+      const optimizationSwitch=workspace.querySelector('button[aria-label="中文生成词优化"]');
+      if(!optimizationSwitch || optimizationSwitch.getAttribute('aria-pressed')!=='true')throw new Error('Gemini optimization switch missing or not default on');
+      if(workspace.querySelectorAll('button[aria-label="中文生成词优化"]').length!==1)throw new Error('Duplicate prompt optimization switches');
+      optimizationSwitch.click();await wait();
+      if(optimizationSwitch.getAttribute('aria-pressed')!=='false')throw new Error('Optimization switch cannot disable');
+      optimizationSwitch.click();await wait();
+      if(workspace.querySelectorAll('.media-image').length!==2)throw new Error('Sharp initial media slots mismatch');
+      const sharp=(await window.runningHub.workflows.list()).find(w=>w.runningHubWorkflowId==='2106577322987307010');
+      if(!sharp||sharp.parameters.filter(p=>p.valueType==='image'&&p.visible!==false).length!==9)throw new Error('Sharp nine-image bridge missing');
+      const durationField=[...workspace.querySelectorAll('.parameter-field')].find(p=>p.textContent.includes('视频时长'))?.querySelector('input');
+      if(!durationField)throw new Error('Sharp duration input missing');
+      const previousDuration=durationField.value;
+      for(const value of ['1','10','10.1','60']){
+        durationField.value=value;
+        if(!durationField.checkValidity())throw new Error('Sharp duration rejects '+value);
       }
+      durationField.value=previousDuration;
+      const nativeSet=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
+      nativeSet.call(durationField,'12');durationField.dispatchEvent(new Event('input',{bubbles:true}));await wait();
+      workspace.querySelector('button[aria-label="增加 1 秒"]').click();await wait();
+      if(durationField.value!=='13')throw new Error('Duration increment is not one second');
+      optimizationSwitch.click();await wait();
+      workspace.querySelector('button[aria-label="中文生成词优化"]').click();await wait();
+      [...document.querySelectorAll('.create-mode-tabs button')].find(b=>b.textContent==='H3首尾帧').click();await wait();
+      const firstLast=document.querySelector('.create-mode-panel:not([hidden])');
+      const labels=[...firstLast.querySelectorAll('.media-head strong')].map(n=>n.textContent);
+      if(JSON.stringify(labels)!==JSON.stringify(['首帧','尾帧']))throw Error('First/last labels: '+JSON.stringify(labels));
+      [...document.querySelectorAll('.create-mode-tabs button')].find(b=>b.textContent==='Inf数字人').click();await wait();
+      const avatar=document.querySelector('.create-mode-panel:not([hidden])');
+      const negative=avatar.querySelector('.negative-prompt-field textarea');
+      if(!negative || !negative.value || negative.getBoundingClientRect().height>180)throw Error('INF negative prompt missing or too large');
+      if(avatar.textContent.includes('选择工作流'))throw Error('Avatar picker still visible');
+      if(sharp.parameters.some(p=>['145.strength_model','147.extra_steps','193.seed','193.transition_step'].includes(p.key)&&p.visible!==false))throw new Error('Sharp hidden controls exposed');
       if (!Object.keys(localStorage).some(key => key.startsWith('rh-runner.draft-backup.h3-multi-reference.') && localStorage.getItem(key).includes('legacy input must be backed up'))) throw new Error('Legacy draft backup missing');
       return true;
     })()`);
@@ -740,20 +952,34 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
     const mvLayout = await window.webContents.executeJavaScript(`(async () => {
       // Persistence is debounced by 300 ms; storage assertions must wait for it.
       const wait = () => new Promise(resolve => setTimeout(resolve, 450));
-      [...document.querySelectorAll('.create-mode-tabs button')].find(b => b.textContent === 'H3 数字人 MV')?.click();
+      [...document.querySelectorAll('.create-mode-tabs button')].find(b => b.textContent === 'H3 数字人')?.click();
       await wait();
       const root = document.querySelector('.mv-workspace');
+      const taskName=root?.querySelector('input[aria-label="H3数字人任务名称"]');
+      if(!taskName || root.querySelector('.mv-segment input[aria-label*="任务名称"]'))throw Error('MV must have one shared task name');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(taskName,'测试整体任务');
+      taskName.dispatchEvent(new Event('input',{bubbles:true}));await wait();
+      if(JSON.parse(localStorage.getItem('rh-runner.mv-segments.v1.shared')).taskName!=='测试整体任务')throw Error('Shared task name not saved');
+      const optimizer=root?.querySelector('button[aria-label="第 1 段中文生成词优化"]');
+      if(!optimizer || !optimizer.closest('.content-input-label') || root.querySelectorAll('.mv-segment').length!==1)throw Error('MV segment optimizer/default missing');
+      if(optimizer.getAttribute('aria-pressed')!=='true')throw Error('MV optimization default is not enabled');
+      await wait();
+      if(!JSON.parse(localStorage.getItem('rh-runner.mv-segments.v1'))[0].draft.promptOptimizationEnabled)throw Error('MV optimization not persisted');
+      root.querySelector('.mv-add-segment').click();await wait();
+      if(root.querySelector('button[aria-label="第 2 段中文生成词优化"]').getAttribute('aria-pressed')!=='true')throw Error('New segment did not inherit optimization');
+      optimizer.click();await wait();
+      if(root.querySelector('button[aria-label="第 2 段中文生成词优化"]').getAttribute('aria-pressed')!=='true')throw Error('Segment switches are not independent');
       if (!root || root.querySelectorAll('.mv-segment').length !== 2) return false;
       if (root.querySelectorAll('.media-image').length !== 4 || root.querySelectorAll('.media-audio').length !== 1) return false;
       if (root.querySelectorAll('.mv-generation .app-select').length !== 1 || root.querySelectorAll('.mv-segment .app-select').length !== 0) return false;
-      if (root.querySelectorAll('button[aria-label="MV Plus 高显存"]').length !== 1 || root.querySelectorAll('.mv-segment .switch').length) return false;
+      if (root.querySelectorAll('button[aria-label="MV Plus 高显存"]').length !== 1 || root.querySelectorAll('.mv-segment .switch').length !== 2) return false;
       const plus = root.querySelector('button[aria-label="MV Plus 高显存"]');
       const standardPlus = document.querySelector('.create-mode-panel[hidden] .instance-mode-control .switch');
       if (!plus.closest('.instance-mode-control') || (standardPlus && (getComputedStyle(plus).height !== getComputedStyle(standardPlus).height || getComputedStyle(plus).width !== getComputedStyle(standardPlus).width))) throw new Error('MV Plus differs from standard control');
       const stage = [...root.querySelectorAll('button')].find(b => b.textContent === '加入制作批次');
       stage.click(); await wait();
-      if (!root.querySelector('[role="alert"]')?.textContent.includes('未填写生成词') || root.querySelectorAll('.batch-list article').length) return false;
-      if (!root.querySelector('.batch-submit').disabled) return false;
+      if (!root.querySelector('[role="alert"]')?.textContent.includes('未填写生成词') || document.querySelectorAll('.batch-list article').length) return false;
+      if (!document.querySelector('.batch-submit').disabled) return false;
       const segments = root.querySelectorAll('.mv-segment');
       if ([...segments].some(s => s.querySelectorAll('textarea').length !== 1)) return false;
       const prompt = segments[0].querySelector('textarea');
@@ -828,13 +1054,13 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       }
       const selectMode = async name => { [...document.querySelectorAll('.create-mode-tabs button')].find(b => b.textContent === name)?.click(); await wait(); };
       const visible = () => document.querySelector('.create-mode-panel:not([hidden])');
-      for (const mode of ['数字人', 'H3 多参考', 'H3 数字人 MV']) {
+      for (const mode of ['Inf数字人', 'H3多参考', 'H3 数字人', 'H3首尾帧']) {
         await selectMode(mode);
-        if (visible()?.querySelectorAll('.batch-list article').length !== 1) throw new Error('Shared batch missing in ' + mode);
+        if (document.querySelectorAll('.create-sidebar').length !== 1 || document.querySelectorAll('.batch-list article').length !== 1) throw new Error('Shared batch missing in ' + mode);
       }
       if (localStorage.getItem('rh-runner.mv-segments.v1.batch') !== null || !localStorage.getItem('rh-runner.mv-batch-migration-backup')) throw new Error('Migration backup failed');
       const before = localStorage.getItem('rh-runner.mv-segments.v1');
-      visible().querySelector('button[aria-label="编辑批次任务"]').click(); await wait();
+      document.querySelector('button[aria-label="编辑批次任务"]').click(); await wait();
       if (visible().querySelectorAll('.mv-segment').length !== 1) throw new Error('MV edit not isolated');
       const prompt = visible().querySelector('.mv-segment textarea');
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(prompt, 'edited queued snapshot');
@@ -844,10 +1070,10 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       const key = batch[0].draft.workflowSnapshot.parameters.find(p => p.key === '87.value').id;
       if (batch.length !== 1 || batch[0].id !== 'smoke-mv-legacy' || batch[0].draft.parameterValues[key] !== 'edited queued snapshot') throw new Error('MV edit duplicated or lost snapshot');
       if (localStorage.getItem('rh-runner.mv-segments.v1') !== before) throw new Error('MV edit overwrote editor draft');
-      await selectMode('H3 多参考');
-      visible().querySelector('button[aria-label="删除批次任务"]').click(); await wait();
-      await selectMode('H3 数字人 MV');
-      if (visible().querySelectorAll('.batch-list article').length || !visible().querySelector('.batch-submit').disabled) throw new Error('Shared deletion failed');
+      await selectMode('H3多参考');
+      document.querySelector('button[aria-label="删除批次任务"]').click(); await wait();
+      await selectMode('H3 数字人');
+      if (document.querySelectorAll('.batch-list article').length || !document.querySelector('.batch-submit').disabled) throw new Error('Shared deletion failed');
       const stage = () => [...visible().querySelectorAll('button')].find(b => b.textContent.includes('加入制作批次'));
       const count = visible().querySelectorAll('.mv-segment').length;
       stage().click(); await wait(); stage().click(); await wait();
@@ -857,7 +1083,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       if (repeated[0].draft.production.groupId === repeated[count].draft.production.groupId) throw new Error('Repeated production reused group');
       for (let i = 0; i < count; i++) if (repeated[i].draft.production.segmentIndex !== i + 1) throw new Error('Segment order missing');
       [...visible().querySelectorAll('button')].find(b => b.textContent === '清空全部输入').click(); await wait();
-      if (visible().querySelectorAll('.mv-segment').length !== 2) throw new Error('Clear did not reset segment count');
+      if (visible().querySelectorAll('.mv-segment').length !== 1) throw new Error('Clear did not reset segment count');
       if ([...visible().querySelectorAll('textarea')].some(t => t.value !== '')) throw new Error('Clear left prompt text');
       const cleared = JSON.parse(localStorage.getItem('rh-runner.mv-segments.v1'));
       for (const segment of cleared) if (Object.values(segment.draft.mediaOverrides).some(m => m.mode === 'replace')) throw new Error('Clear left media');
@@ -866,6 +1092,141 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       return true;
     })()`);
     console.log(sharedBatch ? 'DESKTOP_SHARED_BATCH_PASS' : 'DESKTOP_SHARED_BATCH_FAIL');
+    // Isolated smoke database + synthetic WAV: verify IPC, file playback and handoff without a cloud task.
+    const ttsWav=Buffer.alloc(4844);
+    ttsWav.write('RIFF');ttsWav.writeUInt32LE(4836,4);ttsWav.write('WAVEfmt ',8);ttsWav.writeUInt32LE(16,16);
+    ttsWav.writeUInt16LE(1,20);ttsWav.writeUInt16LE(1,22);ttsWav.writeUInt32LE(24000,24);ttsWav.writeUInt32LE(48000,28);
+    ttsWav.writeUInt16LE(2,32);ttsWav.writeUInt16LE(16,34);ttsWav.write('data',36);ttsWav.writeUInt32LE(4800,40);
+    gemini.store.add(['AIza-tts-smoke-key-123456789']);
+    gemini=new GeminiPool(gemini.store,{fetch:async(_url,options)=>{
+      const body=JSON.parse(String(options?.body));
+      if(body.model==='gemini-3.5-flash-lite'){
+        const transcript=JSON.parse(body.input[0].text).transcript;
+        return Response.json({status:'completed',steps:[{type:'model_output',content:[{type:'text',text:transcript+'!'}]}]});
+      }
+      return Response.json({status:'completed',steps:[{type:'model_output',content:[{type:'audio',mime_type:'audio/wav',data:ttsWav.toString('base64')}]}]});
+    }});
+    await window.webContents.executeJavaScript(`(async()=>{
+      [...document.querySelectorAll('.nav-list button')].find(b=>b.textContent==='创建任务').click();
+      await new Promise(r=>setTimeout(r,200));
+      [...document.querySelectorAll('.create-mode-tabs button')].find(b=>b.textContent==='Gemini TTS').click();
+      await new Promise(r=>setTimeout(r,300));
+      const root=document.querySelector('.tts-workspace');
+      if(!window.runningHub.tts || !root || root.querySelectorAll('textarea').length!==2)throw Error('TTS workspace missing');
+      if(!root.textContent.includes('越南语')||!root.textContent.includes('女声'))throw Error('TTS defaults missing');
+      const button=[...root.querySelectorAll('button')].find(b=>b.textContent==='生成音频');
+      if(!button.disabled)throw Error('Empty TTS submission enabled');
+      root.querySelector('[aria-label="配音音色"]').click();
+      await new Promise(r=>setTimeout(r,100));
+      const options=document.querySelectorAll('[role="option"]');
+      if(options.length!==30 || ![...options].some(o=>o.textContent.includes('男声')))throw Error('TTS voice list incomplete');
+      options[0].click();
+      [...document.querySelectorAll('.create-mode-tabs button')].find(b=>b.textContent==='Inf数字人').click();
+      await new Promise(r=>setTimeout(r,200));
+      if(!document.querySelector('.tts-workspace').closest('.create-mode-panel').hidden)throw Error('TTS navigation failed');
+      [...document.querySelectorAll('.create-mode-tabs button')].find(b=>b.textContent==='Gemini TTS').click();
+      await new Promise(r=>setTimeout(r,200));
+      const bounds=document.querySelector('.tts-workspace').getBoundingClientRect();
+      if(bounds.width<100||bounds.height<100)throw Error('TTS workspace not visible');
+      const mvBefore=localStorage.getItem('rh-runner.mv-segments.v1');
+      const text=root.querySelector('textarea[aria-label="配音文本"]');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(text,'Xin chào');
+      text.dispatchEvent(new Event('input',{bubbles:true}));
+      await new Promise(r=>setTimeout(r,100));
+      [...root.querySelectorAll('button')].find(b=>b.textContent==='自动优化').click();
+      for(let i=0;i<50&&text.value!=='Xin chào!';i++)await new Promise(r=>setTimeout(r,100));
+      if(text.value!=='Xin chào!')throw Error('TTS optimization did not replace transcript');
+      if(button.disabled)throw Error('TTS optimization remained busy');
+      button.click();
+      for(let i=0;i<50&&!root.querySelector('.tts-result');i++)await new Promise(r=>setTimeout(r,100));
+      const audio=root.querySelector('.tts-result audio');
+      if(!audio)throw Error('TTS IPC did not produce audio');
+      for(let i=0;i<30&&!Number.isFinite(audio.duration);i++)await new Promise(r=>setTimeout(r,100));
+      if(!(audio.duration>0))throw Error('TTS generated file cannot be played');
+      const source=audio.src;
+      [...root.querySelectorAll('button')].find(b=>b.textContent==='发送到数字人').click();
+      await new Promise(r=>setTimeout(r,450));
+      const active=[...document.querySelectorAll('.create-mode-tabs button')].find(b=>b.getAttribute('aria-pressed')==='true');
+      if(active?.textContent!=='Inf数字人')throw Error('TTS handoff went to wrong workspace');
+      const draft=JSON.parse(localStorage.getItem('rh-runner.draft.v1.digital-human'));
+      const audioParameter=draft.workflowSnapshot.parameters.find(p=>p.valueType==='audio'&&p.visible!==false);
+      if(!audioParameter || draft.mediaOverrides[audioParameter.id]?.previewUrl!==source)throw Error('TTS audio did not reach ordinary avatar draft');
+      if(localStorage.getItem('rh-runner.mv-segments.v1')!==mvBefore)throw Error('TTS changed MV draft');
+      [...document.querySelectorAll('.create-mode-tabs button')].find(b=>b.textContent==='Gemini TTS').click();
+      await new Promise(r=>setTimeout(r,200));
+    })()`);
+    window.showInactive();
+    await new Promise(r=>setTimeout(r,600));
+    await writeFile(path.join(app.getPath("temp"),"rh-tts-ui.png"),(await window.webContents.capturePage()).toPNG());
+    console.log('DESKTOP_TTS_PASS');
+    for(const width of [980,1200,1440]){
+      window.setSize(width,940);
+      await new Promise(r=>setTimeout(r,150));
+      await window.webContents.executeJavaScript(`(async()=>{
+        for(const tab of document.querySelectorAll('.create-mode-tabs button')){
+          tab.click();await new Promise(r=>setTimeout(r,100));
+          const root=document.querySelector('.create-workspace');
+          if(['H3多参考','H3首尾帧'].includes(tab.textContent)){
+            const panel=document.querySelector('.create-mode-panel:not([hidden])');
+            const prompt=panel.querySelector('.h3-prompt-input textarea');
+            if(!prompt || prompt.getBoundingClientRect().height<280)throw Error('H3 prompt height mismatch');
+            if(panel.querySelector('.generic-section'))throw Error('Obsolete extra parameters');
+            if(!panel.textContent.includes('高分辨率分块') || !panel.textContent.includes('目标分辨率'))throw Error('Resolution controls missing');
+          }
+          if(root.scrollWidth>root.clientWidth+2)throw Error('Workspace overflow '+tab.textContent+' '+root.scrollWidth+'/'+root.clientWidth);
+          const nav=document.querySelector('.create-mode-tabs');
+          const bounds=nav.getBoundingClientRect(), selected=tab.getBoundingClientRect();
+          const editor=document.querySelector('.create-editor-column').getBoundingClientRect();
+          if(bounds.right>editor.right+2 || selected.left<bounds.left-2 || selected.right>bounds.right+2)throw Error('Navigation or selected module outside editor');
+          const audio=document.querySelector('.mv-global-audio');
+          if(audio?.querySelector('.switch') || audio?.textContent.includes('清空全部输入'))throw Error('Global controls inside audio');
+        }
+      })()`);
+    }
+    console.log('DESKTOP_RESPONSIVE_MODULES_PASS');
+    await window.webContents.executeJavaScript(`(async()=>{
+      const wait=()=>new Promise(r=>setTimeout(r,400));
+      [...document.querySelectorAll('.nav-list button')].find(b=>b.textContent==='工作流').click();await wait();
+      const group=document.querySelector('[aria-label="默认工作流"]');
+      if(!group || group.querySelector('.workflow-breakdown') || group.querySelector('.workflow-card-actions'))throw Error('Default workflow clutter remains');
+      const buttons=[...group.querySelectorAll('button')].filter(b=>b.textContent==='Skill');
+      if(buttons.length!==3)throw Error('Expected three H3 Skill entries, no Inf entry');
+      buttons[0].click();await wait();
+      const modal=document.querySelector('[aria-label="工作流 Skill"]');
+      if(!modal?.querySelector('[aria-label="加载 Skill"]') || !modal.textContent.includes('上传自定义 Skill'))throw Error('Skill UI missing');
+      modal.querySelector('button[aria-label="关闭"]').click();
+    })()`);
+    await backend.stop();
+    const previewWorkflow=backend.workflows.list().find(w=>w.runningHubWorkflowId==='2106577322987307010')!;
+    const previewParameters=Object.fromEntries(previewWorkflow.profile.parameters.map(p=>[p.id,p.defaultValue]));
+    const previewPrompt=previewWorkflow.profile.parameters.find(p=>p.semanticType==='prompt')!;
+    previewParameters[previewPrompt.id]='smoke original prompt';
+    const previewJob=backend.jobs.create({workflowId:previewWorkflow.id,taskName:'预览命名测试',parameters:previewParameters,promptOptimization:{model:'gemini-test',skill:workflowSkills.snapshot(previewWorkflow.runningHubWorkflowId,false),originalText:'smoke original prompt'}});
+    backend.jobs.transition(previewJob.id,'OPTIMIZING');
+    await window.webContents.executeJavaScript(`(async()=>{
+      [...document.querySelectorAll('.nav-list button')].find(b=>b.textContent==='任务队列').click();
+      await new Promise(r=>setTimeout(r,450));
+      const button=[...document.querySelectorAll('.job-actions button')].find(b=>b.textContent.includes('提交参数预览'));
+      if(!document.querySelector('.job-title')?.textContent.includes('预览命名测试'))throw Error('Task title not connected');
+      if(!button)throw Error('Active task preview unavailable');button.click();await new Promise(r=>setTimeout(r,450));
+      const modal=document.querySelector('[aria-label="任务预览"]');
+      if(!modal?.textContent.includes('smoke original prompt') || !modal.textContent.includes('正在等待优化结果'))throw Error('Pending optimization preview missing');
+    })()`);
+    const previewState=backend.jobs.get(previewJob.id)!.profileSnapshot;
+    previewState.promptOptimization!.finalText='smoke optimized prompt';
+    backend.database.updateJob(previewJob.id,{profileSnapshot:previewState});
+    backend.jobs.transition(previewJob.id,'FAILED');
+    await window.webContents.executeJavaScript(`(async()=>{
+      await new Promise(r=>setTimeout(r,450));
+      const modal=document.querySelector('[aria-label="任务预览"]');
+      if(!modal?.textContent.includes('smoke optimized prompt') || modal.querySelectorAll('.preview-prompt button:not(:disabled)').length!==2)throw Error('Failed/live optimized preview or copy missing');
+      modal.querySelector('button[aria-label="关闭"]').click();
+      [...document.querySelectorAll('.nav-list button')].find(b=>b.textContent==='创建任务').click();await new Promise(r=>setTimeout(r,200));
+    })()`);
+    console.log('DESKTOP_WORKFLOW_SKILL_AND_LIVE_PREVIEW_PASS');
+    await window.webContents.executeJavaScript(`[...document.querySelectorAll('.create-mode-tabs button')].find(b=>b.textContent==='Inf数字人').click()`);
+    await new Promise(r=>setTimeout(r,150));
+    await writeFile(path.join(app.getPath('temp'),'rh-fixed-modules.png'),(await window.webContents.capturePage()).toPNG());
     await backend.close();
     backend = undefined as never;
     app.exit(connected && overviewScroll && settingsScroll && themesPassed && generationLayout && mvLayout && sharedBatch ? 0 : 1);

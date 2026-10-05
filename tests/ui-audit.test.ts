@@ -39,7 +39,7 @@ test("workflow editor keeps Workflow ID read-only and parameter renderer avoids 
 test("desktop freezes the configured download directory into every new job", async () => {
   const desktop = await readFile(path.join(root, "src/desktop/main.ts"), "utf8");
   assert.match(desktop, /const resolved = resolveMediaInputs\(workflow\.profile, parameters, draft\.mediaOverrides \?\? \{\}\)/);
-  assert.match(desktop, /return \{ workflowId: draft\.workflowId, \.\.\.resolved, production: draft\.production, instanceType: draft\.instanceType === "plus" \? "plus" : "default", outputDir \}/);
+  assert.match(desktop, /return \{ workflowId: draft\.workflowId, taskName:draft\.taskName, \.\.\.resolved, promptOptimization(?:,|:.*) production: draft\.production, instanceType: draft\.instanceType === "plus" \? "plus" : "default", outputDir \}/);
   assert.match(desktop, /const outputDir = settings\.outputDir \?\? defaultOutputDir/);
   assert.match(desktop, /const settings = await readDesktopSettings\(\)/);
   assert.match(desktop, /const outputDir = await currentOutputDir\(\)/);
@@ -60,15 +60,24 @@ test("create page exposes VideoKit-style peer modes while keeping the existing t
   const app = await readFrontend();
   const css = await readFile(path.join(root, "frontend/src/styles.css"), "utf8");
   assert.match(app, /className="create-mode-tabs"/);
-  assert.match(app, />数字人</);
-  assert.match(app, />H3 多参考</);
-  assert.match(app, /visited\.map\(mode => <div key=\{mode\} hidden=\{activeMode !== mode\}/);
+  assert.match(app, />Inf数字人</);
+  assert.match(app, />H3多参考</);
+  assert.match(app, />H3首尾帧</);
+  assert.match(app, /visited\.filter\(mode => mode !== "personal" \|\| hasPersonalWorkflows\)\.map\(mode => <div key=\{mode\} hidden=\{activeMode !== mode\}/);
+  assert.match(app, /hasPersonalWorkflows && <button[^\n]*>个人工作流<\/button>/);
   assert.match(app, /const CreateWorkspace = memo/);
   assert.doesNotMatch(app, /modeDrafts\.current/);
   assert.match(app, /const modeWorkflows = useMemo\([\s\S]*?workflows\.filter/);
   assert.match(app, /h3MultiReferenceWorkflowIds\.has\(workflow\.runningHubWorkflowId\)/);
   assert.match(css, /\.create-mode-tabs button\.active/);
   assert.match(app, /<div className="instance-mode-control">[\s\S]*?<strong>Plus 高显存<\/strong>/);
+});
+
+test("completed tasks open output preview, other tasks open submitted inputs", async () => {
+  const modal = await readFile(path.join(root, "frontend/src/modals/TaskPreviewModal.tsx"), "utf8");
+  assert.match(modal, /useState<"inputs" \| "outputs">\(\(\) => job.status === "COMPLETED" \? "outputs" : "inputs"\)/);
+  const jobs = await readFile(path.join(root, "frontend/src/views/Jobs.tsx"), "utf8");
+  assert.match(jobs, /TaskPreviewModal key=\{previewing.id\}/);
 });
 
 test("source desktop reports the application package version instead of Electron's runtime version", async () => {

@@ -1,4 +1,6 @@
 import type { AccountView, CreateJobDraft, JobView, WorkflowView } from "./types.js";
+import type { GeminiSettings, GeminiTestResult } from "../../src/core/gemini/types.js";
+import type { TtsInput, TtsAudio } from "../../src/core/gemini/ttsTypes.js";
 
 export interface UpdateInfo {
   currentVersion: string;
@@ -20,7 +22,29 @@ export interface UpdateProgress {
 }
 
 export interface RunningHubRendererBridge {
+  skills: {
+    settings(workflowId:string):Promise<import('../../src/core/gemini/workflowSkills.js').WorkflowSkillSettings>;
+    select(workflowId:string,skillId:string):Promise<import('../../src/core/gemini/workflowSkills.js').WorkflowSkillSettings>;
+    import(workflowId:string):Promise<import('../../src/core/gemini/workflowSkills.js').WorkflowSkillSettings|undefined>;
+  };
+  tts: {
+    optimize(id:string,input:{text:string;language:string}):Promise<string>;
+    generate(id:string,input:TtsInput,preview:boolean):Promise<TtsAudio>;
+    cancel(id:string):Promise<void>;
+    save(localPath:string):Promise<boolean>;
+  };
+  gemini: {
+    setOptimizationEnabled(enabled: boolean): Promise<GeminiSettings>;
+    settings(): Promise<GeminiSettings>;
+    addKeys(keys: string[]): Promise<GeminiSettings>;
+    setModel(model: string): Promise<GeminiSettings>;
+    setEnabled(id: string, enabled: boolean): Promise<GeminiSettings>;
+    remove(id: string): Promise<GeminiSettings>;
+    test(id?: string): Promise<GeminiTestResult>;
+    copyKeysUrl(): Promise<void>;
+  };
   accounts: {
+    setConcurrency(id:string,value:number):Promise<AccountView>;
     list(): Promise<AccountView[]>;
     add(input: { label: string; apiKey: string }): Promise<AccountView>;
     updateKey(input: { id: string; apiKey: string }): Promise<AccountView>;

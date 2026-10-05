@@ -7,7 +7,7 @@ import { RunningHubBackend } from "../src/core/index.js";
 import { buildNodeInfoList } from "../src/core/workflows/nodeInfo.js";
 
 function fixture() {
-  const pkg = parsePortableWorkflowPackage(JSON.parse(readFileSync("bundled-workflows/minimax-h3-selflift.rhworkflow.json", "utf8")));
+  const pkg = parsePortableWorkflowPackage(JSON.parse(readFileSync("tests/fixtures/retired-workflows/minimax-h3-selflift.rhworkflow.json", "utf8")));
   return { profile: materializePortableProfile(pkg, "test", 1), raw: pkg.workflow.apiJson };
 }
 test("profile rejects different IDs targeting the same API input", () => {
@@ -29,7 +29,7 @@ test("profile rejects a UI key that disagrees with its API target", () => {
 });
 
 test("portable import rejects inconsistent display and submission identities", () => {
-  const pkg = JSON.parse(readFileSync("bundled-workflows/minimax-h3-selflift.rhworkflow.json", "utf8"));
+  const pkg = JSON.parse(readFileSync("tests/fixtures/retired-workflows/minimax-h3-selflift.rhworkflow.json", "utf8"));
   pkg.profile.parameters[0].key = "999999.unrelated";
   assert.throws(() => parsePortableWorkflowPackage(pkg), /参数标识与提交节点不一致/);
 });

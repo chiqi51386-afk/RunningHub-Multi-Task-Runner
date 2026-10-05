@@ -3,8 +3,11 @@ import { randomUUID } from "node:crypto";
 import type { BackendEvents } from "../events.js";
 import type { CreateJobInput, Job, JobStatus } from "../types.js";
 import { validateProfile, validateProfileAgainstWorkflow } from "../workflows/profiles.js";
+import { sharpInputs } from "../gemini/h3Optimizer.js";
 
 const TRANSITIONS: Record<JobStatus, ReadonlySet<JobStatus>> = {
+  OPTIMIZE_PENDING: new Set(["OPTIMIZING", "CANCELLED", "FAILED"]),
+  OPTIMIZING: new Set(["OPTIMIZE_PENDING", "PENDING", "CANCELLED", "FAILED"]),
   PENDING: new Set(["ASSIGNED", "CANCELLED"]),
   ASSIGNED: new Set(["UPLOADING", "SUBMITTING", "PENDING", "FAILED", "CANCELLED"]),
   UPLOADING: new Set(["SUBMITTING", "PENDING", "RETRY_WAIT", "FAILED", "CANCELLED"]),
@@ -73,6 +76,10 @@ export class Jobs {
     if (input.production && (!Number.isInteger(input.production.segmentIndex) || input.production.segmentIndex < 1 || input.production.segmentIndex > 9999)) throw new Error("段落编号无效");
     const workflow = this.db.getWorkflow(input.workflowId);
     if (!workflow) throw new Error(`Workflow not found: ${input.workflowId}`);
+    if (input.promptOptimization) {
+      if (!/^gemini-[A-Za-z0-9._-]{1,100}$/.test(input.promptOptimization.model)) throw new Error("优化模型无效");
+      sharpInputs(workflow, input);
+    }
     // Recheck persisted profiles too: older imports predate current validation.
     validateProfile(workflow.profile);
     validateProfileAgainstWorkflow(workflow.profile, workflow.raw);

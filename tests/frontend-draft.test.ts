@@ -38,7 +38,7 @@ test("dynamic image slots preserve gaps, node identity, swaps and cleared hidden
 });
 test("bundled Inf to LTX keeps scheduler internals and produces no dpm++ scheduler override", () => {
   const load = (file: string, id: string) => {
-    const data = JSON.parse(readFileSync(`bundled-workflows/${file}.rhworkflow.json`, "utf8"));
+    const data = JSON.parse(readFileSync(`${["ltx-2.3-digital-human","minimax-h3-multi-reference","minimax-h3-selflift"].includes(file)?"tests/fixtures/retired-workflows":"bundled-workflows"}/${file}.rhworkflow.json`, "utf8"));
     return workflow(id, data.profile.parameters);
   };
   const inf = load("infinitetalk-digital-human", "inf");

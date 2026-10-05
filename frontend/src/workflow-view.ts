@@ -243,15 +243,14 @@ const h3MultiReferenceWorkflowIds = new Set([
 ]);
 
 export function createModeForWorkflow(workflow?: WorkflowView): CreateMode {
-  if (["2104166509705986049", "2104101064866140162"].includes(workflow?.runningHubWorkflowId ?? "")) return "h3-mv";
+  if (workflow?.builtIn === false) return "personal";
+  if (workflow?.runningHubWorkflowId === "2106577322987307010") return "h3-multi-reference";
+  if (workflow?.runningHubWorkflowId === "2106994828660080641") return "h3-first-last";
+  if (["2107063778012905474", "2104101064866140162"].includes(workflow?.runningHubWorkflowId ?? "")) return "h3-mv";
   if (!workflow) return "digital-human";
   if (h3MultiReferenceWorkflowIds.has(workflow.runningHubWorkflowId)) return "h3-multi-reference";
   if (digitalHumanWorkflowIds.has(workflow.runningHubWorkflowId)) return "digital-human";
-  const context = `${workflow.name} ${workflow.functionDescription ?? ""} ${workflow.usageInstructions ?? ""}`.toLowerCase();
-  if (/minimax\s*[_-]?\s*h3|h3[^\n]*多参考|多参考[^\n]*h3/.test(context)) return "h3-multi-reference";
-  if (/数字人|对口型|infini|ltx|lip.?sync/.test(context)) return "digital-human";
-  if (workflow.parameters.some(parameter => parameter.valueType === "audio")) return "digital-human";
-  return "h3-multi-reference";
+  return "personal";
 }
 
 const generationParameterPriority: Partial<Record<WorkflowSemanticType, number>> = {

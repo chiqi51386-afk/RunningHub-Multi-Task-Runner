@@ -26,7 +26,15 @@ export function DraftThumbnail({ draft }: { draft: CreateJobDraft }) {
 export const ParameterField = memo(function ParameterField({ parameter, value, onValue, hideLabel = false }: { hideLabel?: boolean; parameter: WorkflowParameterView; value: unknown; onValue: (parameter: WorkflowParameterView, value: unknown) => void }) {
   const onChange = (next: unknown) => onValue(parameter, next);
   const label = parameterLabel(parameter);
-  if (parameter.valueType === "boolean") return <label className="boolean-field"><span><strong>{label}</strong></span><button type="button" className={`switch ${value ? "checked" : ""}`} onClick={() => onChange(!value)} aria-label={label} aria-pressed={value === true}><span /></button></label>;
+  if (parameter.semanticType === "duration" && ["integer","number"].includes(parameter.valueType)) {
+    const adjust=(delta:number)=>{
+      const current=typeof value==="number"?value:Number(parameter.defaultValue);
+      const next=Number((current+delta).toFixed(6));
+      onChange(Math.max(parameter.min??0,Math.min(parameter.max??Infinity,next)));
+    };
+    return <label className="parameter-field"><span className="field-label">{label}</span><div className="duration-input"><button type="button" aria-label="减少 1 秒" onClick={()=>adjust(-1)}>−</button><input type="number" aria-label={label} value={typeof value==="number"?value:""} min={parameter.min} max={parameter.max} step={parameter.valueType==="integer"?1:"any"} onChange={event=>onChange(event.target.value===""?"":Number(event.target.value))} onKeyDown={event=>{if(event.key==="ArrowUp"||event.key==="ArrowDown"){event.preventDefault();adjust(event.key==="ArrowUp"?1:-1);}}}/><button type="button" aria-label="增加 1 秒" onClick={()=>adjust(1)}>+</button></div></label>;
+  }
+  if (parameter.valueType === "boolean") return <label className={`boolean-field ${parameter.fieldName === "highres_tiling" ? "highres-tiling-field" : ""}`}><span><strong>{label}</strong></span><button type="button" className={`switch ${value ? "checked" : ""}`} onClick={() => onChange(!value)} aria-label={label} aria-pressed={value === true}><span /></button></label>;
   if (parameter.valueType === "select" && parameter.options?.length) {
     const options = parameter.options ?? [];
     const selectedToken = JSON.stringify(value);
@@ -34,6 +42,7 @@ export const ParameterField = memo(function ParameterField({ parameter, value, o
   }
   if (parameter.valueType === "integer" || parameter.valueType === "number") return <label className="parameter-field"><span className="field-label">{label}</span><input type="number" value={typeof value === "number" || (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) ? value : ""} min={parameter.min} max={parameter.max} step={parameter.step ?? (parameter.valueType === "integer" ? 1 : "any")} onChange={event => onChange(event.target.value === "" ? "" : Number(event.target.value))} /></label>;
   if (parameter.valueType === "json") return <JsonParameterField label={label} value={value} onChange={onChange} />;
+  if (parameter.semanticType === "negative_prompt") return <label className="parameter-field wide-field negative-prompt-field"><span className="field-label">{label}</span><textarea aria-label={label} rows={3} style={{minHeight:80,height:96,maxHeight:180}} value={String(value ?? parameter.defaultValue ?? "")} onChange={event=>onChange(event.target.value)}/></label>;
   const multiline = ["prompt", "negative_prompt"].includes(parameter.semanticType) || String(parameter.defaultValue ?? "").length > 80;
   return <label className={`parameter-field ${multiline ? "wide-field" : ""}`}>{!hideLabel && <span className="field-label">{label}</span>}{multiline ? <textarea aria-label={label} rows={4} value={String(value ?? "")} onChange={event => onChange(event.target.value)} /> : <input value={String(value ?? "")} onChange={event => onChange(event.target.value)} />}</label>;
 });

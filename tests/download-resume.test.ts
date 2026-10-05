@@ -6,6 +6,14 @@ import path from "node:path";
 import { downloadFile } from "../src/core/downloads/transfer.js";
 import { resolveConfig } from "../src/core/config.js";
 const url = "https://cdn.example/video.mp4";
+test("existing output is preserved and collisions get a numbered suffix", () => fixture(async file => {
+  await writeFile(file, "original");
+  await writeFile(file.replace('.mp4', ' (1).mp4'), "other");
+  const saved = await downloadFile(async () => new Response("new"), resolveConfig({}), url, file);
+  assert.equal(saved, file.replace('.mp4', ' (2).mp4'));
+  assert.equal(await readFile(file, 'utf8'), 'original');
+  assert.equal(await readFile(saved, 'utf8'), 'new');
+}));
 async function fixture(run: (file: string) => Promise<void>) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "rh-resume-"));
   try { await run(path.join(dir, "video.mp4")); } finally { await rm(dir, { recursive: true, force: true }); }

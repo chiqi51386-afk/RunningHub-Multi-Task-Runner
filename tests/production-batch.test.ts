@@ -7,7 +7,7 @@ import { mergeSavedBatches, prepareProductionBatch } from "../frontend/src/produ
 import type { WorkflowView } from "../frontend/src/types.js";
 
 const workflows = ["ltx-2.3-digital-human", "minimax-h3-selflift", "h3-digital-human-mv"].map((name, index) => {
-  const pkg = parsePortableWorkflowPackage(JSON.parse(readFileSync(`bundled-workflows/${name}.rhworkflow.json`, "utf8")));
+  const pkg = parsePortableWorkflowPackage(JSON.parse(readFileSync(`${["ltx-2.3-digital-human","minimax-h3-multi-reference","minimax-h3-selflift"].includes(name)?"tests/fixtures/retired-workflows":"bundled-workflows"}/${name}.rhworkflow.json`, "utf8")));
   const id = `workflow-${index}`;
   return { id, profileVersion: 1, runningHubWorkflowId: pkg.workflow.runningHubWorkflowId, parameters: materializePortableProfile(pkg, id, 1, 1, 1).parameters } as WorkflowView;
 });

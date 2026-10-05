@@ -21,9 +21,12 @@ import type {
 
 type DbRow = Record<string, unknown>;
 
+const ACTIVE_SLOT = "(status IN ('ASSIGNED','UPLOADING','SUBMITTING','SUBMIT_UNKNOWN','REMOTE_QUEUED','RUNNING') OR (status='RETRY_WAIT' AND retry_phase='query'))";
+const SLOT_COUNT = `(SELECT COUNT(*) FROM jobs WHERE account_id=accounts.id AND ${ACTIVE_SLOT})`;
 const ACCOUNT_SELECT = `
   SELECT id, label, encrypted_key, enabled, manual_disabled, auto_disabled,
-         auto_disabled_reason, state, current_job_id, balance, coins,
+         auto_disabled_reason, state, current_job_id, balance, coins, max_concurrency, external_task_count,
+         ${SLOT_COUNT} AS active_job_count,
          remote_task_count, api_type, cooldown_until, last_checked_at,
          last_used_at, last_success_at, last_error_at, created_at, updated_at
   FROM accounts`;
@@ -195,6 +198,9 @@ export class CoreDatabase {
     if (!jobColumns.some(column => column.name === "instance_type")) {
       this.raw.exec("ALTER TABLE jobs ADD COLUMN instance_type TEXT NOT NULL DEFAULT 'default'");
     }
+    const accountColumns=this.raw.prepare("PRAGMA table_info(accounts)").all() as DbRow[];
+    if(!accountColumns.some(c=>c.name==='max_concurrency'))this.raw.exec("ALTER TABLE accounts ADD COLUMN max_concurrency INTEGER NOT NULL DEFAULT 1");
+    if(!accountColumns.some(c=>c.name==='external_task_count'))this.raw.exec("ALTER TABLE accounts ADD COLUMN external_task_count INTEGER NOT NULL DEFAULT 0");
     this.repairMisclassifiedSubmitErrors();
     this.repairOrphanedAccountClaims();
     // Run balance repair last because the preceding recovery steps may release
@@ -304,7 +310,7 @@ export class CoreDatabase {
     const clean = apiKey.trim();
     if (!clean) throw new Error("API Key 不能为空。");
     if (!this.getAccount(id)) throw new Error(`Account not found: ${id}`);
-    if (this.getAccount(id)?.currentJobId) throw new Error("当前账号正在执行任务，不能更换 API Key。");
+    if (this.getAccount(id)?.currentJobId || this.getAccount(id)?.activeJobCount) throw new Error("当前账号正在执行任务，不能更换 API Key。");
     const encrypted = this.secretStore.encrypt(clean);
     const fingerprint = createHash("sha256").update(clean).digest("hex").slice(0, 32);
     try {
@@ -331,12 +337,12 @@ export class CoreDatabase {
 
   removeAccount(id: string): boolean {
     const account = this.getAccount(id);
-    if (account?.currentJobId) throw new Error("Cannot remove an account with an active job.");
+    if (account?.currentJobId || account?.activeJobCount) throw new Error("Cannot remove an account with an active job.");
     return this.raw.prepare("DELETE FROM accounts WHERE id = ?").run(id).changes > 0;
   }
 
   setAccountEnabled(id: string, enabled: boolean): Account {
-    if (this.getAccount(id)?.currentJobId) throw new Error("当前账号正在执行任务，请任务结束后再改变启用状态。");
+    if (this.getAccount(id)?.currentJobId || this.getAccount(id)?.activeJobCount) throw new Error("当前账号正在执行任务，请任务结束后再改变启用状态。");
     const now = Date.now();
     this.raw.prepare(`
       UPDATE accounts
@@ -359,6 +365,8 @@ export class CoreDatabase {
     balance: string | null;
     coins: string | null;
     remoteTaskCount: number | null;
+    externalTaskCount: number;
+    maxConcurrency: number;
     apiType: string | null;
     cooldownUntil: number | null;
     lastCheckedAt: number | null;
@@ -370,7 +378,7 @@ export class CoreDatabase {
   }>): Account {
     const mapping: Record<string, string> = {
       state: "state", currentJobId: "current_job_id", balance: "balance", coins: "coins",
-      remoteTaskCount: "remote_task_count", apiType: "api_type", cooldownUntil: "cooldown_until",
+      externalTaskCount: "external_task_count", maxConcurrency: "max_concurrency", remoteTaskCount: "remote_task_count", apiType: "api_type", cooldownUntil: "cooldown_until",
       lastCheckedAt: "last_checked_at", lastUsedAt: "last_used_at", lastSuccessAt: "last_success_at",
       lastErrorAt: "last_error_at", autoDisabled: "auto_disabled", autoDisabledReason: "auto_disabled_reason",
     };
@@ -395,7 +403,7 @@ export class CoreDatabase {
     return (this.raw.prepare(`
       ${ACCOUNT_SELECT}
       WHERE enabled = 1 AND manual_disabled = 0 AND auto_disabled = 0
-        AND state = 'IDLE' AND current_job_id IS NULL
+        AND state IN ('IDLE','BUSY') AND ${SLOT_COUNT} + external_task_count < max_concurrency
         AND ((coins IS NOT NULL AND trim(coins) != '' AND CAST(coins AS REAL) > 0)
           OR ((coins IS NULL OR trim(coins) = '')
             AND (balance IS NULL OR trim(balance) = '' OR CAST(balance AS REAL) > 0)))
@@ -456,6 +464,10 @@ export class CoreDatabase {
     const now = Date.now();
     const id = randomUUID();
     const profileSnapshot = structuredClone(workflow.profile);
+    if (input.taskName !== undefined && (typeof input.taskName !== "string" || input.taskName.length > 80 || /[\x00-\x1f]/.test(input.taskName))) throw new Error("任务名称最多 80 个字符，不能包含控制字符");
+    profileSnapshot.taskName = input.taskName?.trim() || undefined;
+    delete profileSnapshot.promptOptimization;
+    if (input.promptOptimization) profileSnapshot.promptOptimization = { model: input.promptOptimization.model, skill: structuredClone(input.promptOptimization.skill), originalText: input.promptOptimization.originalText, raw: structuredClone(workflow.raw) };
     if (input.namingRule) profileSnapshot.downloadNamingRule = input.namingRule;
     if (input.production) profileSnapshot.production = { ...input.production };
     // Persist short identities at creation, independent of completion order.
@@ -473,11 +485,11 @@ export class CoreDatabase {
         id, workflow_id, runninghub_workflow_id, workflow_name, profile_version,
         profile_snapshot_json, parameters_json, media_json, instance_type, output_dir, status,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id, workflow.id, workflow.runningHubWorkflowId, workflow.name, workflow.profileVersion,
       json(profileSnapshot), json(structuredClone(input.parameters)), json(structuredClone(input.media ?? [])),
-      input.instanceType === "plus" ? "plus" : "default", input.outputDir ?? null, now, now,
+      input.instanceType === "plus" ? "plus" : "default", input.outputDir ?? null, input.promptOptimization ? "OPTIMIZE_PENDING" : "PENDING", now, now,
     );
     return this.getJob(id)!;
   }
@@ -502,6 +514,8 @@ export class CoreDatabase {
   }
 
   updateJob(id: string, update: Partial<{
+    profileSnapshot: WorkflowProfile;
+    parameters: Record<string, unknown>;
     cancelRequestedAt: number | null;
     submission: Job["submission"];
     status: JobStatus;
@@ -521,6 +535,8 @@ export class CoreDatabase {
     completedAt: number | null;
   }>): Job {
     const mapping: Record<string, { column: string; encode?: (value: unknown) => unknown }> = {
+      profileSnapshot: { column: "profile_snapshot_json", encode: json },
+      parameters: { column: "parameters_json", encode: json },
       cancelRequestedAt: { column: "cancel_requested_at" },
       submission: { column: "submission_json", encode: nullableJson },
       status: { column: "status" }, accountId: { column: "account_id" }, remoteTaskId: { column: "remote_task_id" },
@@ -554,7 +570,7 @@ export class CoreDatabase {
       const account = this.raw.prepare(`
         SELECT id FROM accounts
         WHERE id = ? AND enabled = 1 AND manual_disabled = 0 AND auto_disabled = 0
-          AND state = 'IDLE' AND current_job_id IS NULL
+          AND state IN ('IDLE','BUSY') AND ${SLOT_COUNT} + external_task_count < max_concurrency
           AND ((coins IS NOT NULL AND trim(coins) != '' AND CAST(coins AS REAL) > 0)
             OR ((coins IS NULL OR trim(coins) = '')
               AND (balance IS NULL OR trim(balance) = '' OR CAST(balance AS REAL) > 0)))
@@ -577,16 +593,24 @@ export class CoreDatabase {
     });
   }
 
+  activeAccountJobs(accountId:string): Job[] {
+    return (this.raw.prepare(`${JOB_SELECT} WHERE account_id=? AND ${ACTIVE_SLOT}`).all(accountId) as DbRow[]).map(jobFromRow);
+  }
+
+  setAccountConcurrency(id:string, value:unknown): Account {
+    if(!Number.isInteger(value) || Number(value)<1 || Number(value)>100)throw new Error("最大并发必须为 1–100 的整数，请按账号实际权益设置");
+    if(!this.getAccount(id))throw new Error("账号不存在");
+    return this.updateAccount(id,{maxConcurrency:Number(value),lastCheckedAt:null});
+  }
+
   releaseAccount(accountId: string, jobId: string, successful: boolean, state: AccountState = "IDLE"): Account | undefined {
-    const now = Date.now();
-    this.raw.prepare(`
-      UPDATE accounts SET state = ?, current_job_id = NULL,
-        remote_task_count = NULL, last_checked_at = NULL,
-        last_success_at = CASE WHEN ? = 1 THEN ? ELSE last_success_at END,
-        last_error_at = CASE WHEN ? = 0 THEN ? ELSE last_error_at END,
-        updated_at = ? WHERE id = ? AND current_job_id = ?
-    `).run(state, Number(successful), now, Number(successful), now, now, accountId, jobId);
-    return this.getAccount(accountId);
+    const account=this.getAccount(accountId);
+    if(!account)return undefined;
+    const others=this.activeAccountJobs(accountId).filter(j=>j.id!==jobId);
+    const blocked=["INVALID_KEY","NO_BALANCE","COOLDOWN","TEMP_UNAVAILABLE","SECRET_UNREADABLE","DISABLED","REMOTE_BUSY"];
+    const nextState=state!=="IDLE" ? state : blocked.includes(account.state) ? account.state : others.length ? "BUSY" : "IDLE";
+    return this.updateAccount(accountId,{state:nextState,currentJobId:others[0]?.id??null,
+      remoteTaskCount:null,lastCheckedAt:blocked.includes(nextState)?Date.now():null,...(successful?{lastSuccessAt:Date.now()}:{lastErrorAt:Date.now()})});
   }
 
   getMediaUploadCache(accountId: string, fileHash: string, ttlMs = Infinity): MediaUploadCacheEntry | undefined {
@@ -629,6 +653,7 @@ function optionalString(value: unknown): string | undefined { return value == nu
 function accountFromRow(row: DbRow): Account {
   return {
     id: String(row.id), label: String(row.label), enabled: Boolean(row.enabled),
+    maxConcurrency:Number(row.max_concurrency ?? 1), activeJobCount:Number(row.active_job_count ?? 0), externalTaskCount:Number(row.external_task_count ?? 0),
     manualDisabled: Boolean(row.manual_disabled), autoDisabled: Boolean(row.auto_disabled),
     autoDisabledReason: optionalString(row.auto_disabled_reason), state: String(row.state) as AccountState,
     currentJobId: optionalString(row.current_job_id), balance: optionalString(row.balance), coins: optionalString(row.coins),

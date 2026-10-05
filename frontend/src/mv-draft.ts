@@ -16,6 +16,7 @@ export function newMvDraft(workflow: WorkflowView, start = 0): CreateJobDraft {
 /** Freeze global controls when adding a segment to the production batch. */
 export function applyMvShared(draft: CreateJobDraft, shared: CreateJobDraft, workflow: WorkflowView): CreateJobDraft {
   let result = cloneDraft(draft);
+  result.taskName = shared.taskName;
   for (const key of ["61.aspect_ratio", "61.megapixels"]) {
     const p = mvParameter(workflow, key);
     result.parameterValues[p.id] = shared.parameterValues[p.id];

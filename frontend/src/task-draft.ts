@@ -1,24 +1,34 @@
 import type { CreateJobDraft, MediaParameterDraft, WorkflowParameterView, WorkflowView } from "./types.js";
+import type { TtsAudio } from "../../src/core/gemini/ttsTypes.js";
 
-export type CreateMode = "digital-human" | "h3-multi-reference" | "h3-mv";
+export type CreateMode = "digital-human" | "h3-multi-reference" | "h3-first-last" | "h3-mv" | "personal";
 export const isMediaParameter = (parameter: WorkflowParameterView) => ["image", "video", "audio"].includes(parameter.valueType);
+export function taskOptimizationEnabled(draft:CreateJobDraft):boolean {
+  return draft.promptOptimizationEnabled ?? draft.geminiOptimization ?? (draft.parameterValues.chinese_prompt_optimization===true);
+}
 export function cloneDraft(draft: CreateJobDraft): CreateJobDraft {
-  return { ...draft, production: draft.production ? { ...draft.production } : undefined, parameterValues: { ...draft.parameterValues }, mediaOverrides: Object.fromEntries(Object.entries(draft.mediaOverrides).map(([id, media]) => [id, { ...media }])) };
+  return { ...draft, commonInputs: draft.commonInputs ? {...draft.commonInputs}:undefined, production: draft.production ? { ...draft.production } : undefined, parameterValues: { ...draft.parameterValues }, mediaOverrides: Object.fromEntries(Object.entries(draft.mediaOverrides).map(([id, media]) => [id, { ...media }])) };
 }
 export function createDraft(workflow?: WorkflowView): CreateJobDraft {
   const parameterValues = Object.fromEntries((workflow?.parameters ?? []).map(parameter => [parameter.id, parameter.defaultValue]));
+  const h3Defaults = !!workflow && ["2106577322987307010", "2106994828660080641", "2107063778012905474"].includes(workflow.runningHubWorkflowId ?? "");
+  if (h3Defaults) for (const parameter of workflow!.parameters) {
+    if (parameter.classType === "ResolutionSelector" && parameter.fieldName === "megapixels") parameterValues[parameter.id] = 1.5;
+    if (parameter.fieldName === "highres_tiling") parameterValues[parameter.id] = true;
+  }
   const mediaOverrides: Record<string, MediaParameterDraft> = {};
   for (const parameter of workflow?.parameters ?? []) {
     if (!isMediaParameter(parameter)) continue;
     mediaOverrides[parameter.id] = { enabled: false, mode: "clear" };
     if (parameter.mediaControl?.autoEnableOnReplace) parameterValues[parameter.mediaControl.parameterId] = parameter.mediaControl.inactiveValue;
   }
-  return { workflowSnapshot: workflow ? structuredClone(workflow) : undefined, workflowId: workflow?.id ?? "", profileVersion: workflow?.profileVersion ?? 0, instanceType: "default", parameterValues, mediaOverrides };
+  return { workflowSnapshot: workflow ? structuredClone(workflow) : undefined, workflowId: workflow?.id ?? "", profileVersion: workflow?.profileVersion ?? 0, instanceType: "default", promptOptimizationEnabled: h3Defaults, parameterValues, mediaOverrides };
 }
 export function visibleMedia(workflow: WorkflowView | undefined, mode: CreateMode) {
   const media = (workflow?.parameters ?? []).filter(parameter => parameter.visible !== false && isMediaParameter(parameter))
     .sort((a, b) => (a.referenceIndex ?? a.displayOrder ?? 9999) - (b.referenceIndex ?? b.displayOrder ?? 9999));
-  if (mode === "h3-multi-reference") return media.filter(parameter => parameter.valueType === "image").slice(0, 6);
+  if (mode === "h3-multi-reference") return media.filter(parameter => parameter.valueType === "image").slice(0, workflow?.runningHubWorkflowId === "2106577322987307010" ? 9 : 6);
+  if (mode === "personal") return media;
   return media.filter(parameter => parameter.valueType === "image" || parameter.valueType === "audio")
     .sort((a, b) => Number(a.valueType === "audio") - Number(b.valueType === "audio"));
 }
@@ -26,6 +36,12 @@ export function setDraftMedia(draft: CreateJobDraft, parameter: WorkflowParamete
   const parameterValues = { ...draft.parameterValues };
   if (parameter.mediaControl?.autoEnableOnReplace) parameterValues[parameter.mediaControl.parameterId] = media.mode === "replace" ? parameter.mediaControl.activeValue : parameter.mediaControl.inactiveValue;
   return { ...draft, parameterValues, mediaOverrides: { ...draft.mediaOverrides, [parameter.id]: media } };
+}
+export function applyTtsAudio(draft:CreateJobDraft,workflow:WorkflowView,audio:TtsAudio):CreateJobDraft{
+  if(draft.workflowId!==workflow.id || draft.profileVersion!==workflow.profileVersion)throw new Error("数字人工作流已更新，请重新选择工作流。");
+  const inputs=workflow.parameters.filter(p=>p.valueType==="audio"&&p.visible!==false);
+  if(inputs.length!==1)throw new Error("当前数字人工作流没有唯一的音频输入，无法自动填入。");
+  return setDraftMedia(draft,inputs[0]!,{...audio,enabled:true,mode:"replace"});
 }
 // Presentation only: keep gaps and all underlying overrides for submission.
 export function expandedImageSlotCount(media: WorkflowParameterView[], draft: CreateJobDraft): number {
@@ -58,6 +74,24 @@ export function transferDraft(current: CreateJobDraft, previous: WorkflowView | 
   // Switching workflows retains the user's explicit compute-tier choice.
   // Fresh drafts still start with the standard tier.
   result.instanceType = current.instanceType;
+  result.taskName = current.taskName;
+  result.promptOptimizationEnabled = taskOptimizationEnabled(current);
+  result.workflowInputs = {...current.workflowInputs,[`${previous.id}:${previous.profileVersion}`]:{...current.parameterValues}};
+  const remembered=result.workflowInputs[`${next.id}:${next.profileVersion}`];
+  if(remembered)for(const p of next.parameters){
+    if(p.visible!==false&&!isMediaParameter(p)&&!["prompt","negative_prompt","duration","aspect_ratio"].includes(p.semanticType)&&p.key!=="328.value"&&compatibleValue(p,remembered[p.id]))result.parameterValues[p.id]=remembered[p.id];
+  }
+  result.commonInputs = {...current.commonInputs};
+  for(const semantic of ["duration","aspect_ratio"] as const){
+    const source=previous.parameters.filter(p=>p.visible!==false&&p.semanticType===semantic);
+    if(source.length===1)result.commonInputs[semantic]=current.parameterValues[source[0]!.id];
+    const targets=next.parameters.filter(p=>p.visible!==false&&p.semanticType===semantic);
+    const value=result.commonInputs[semantic];
+    if(value!==undefined && targets.length===1){
+      if(!compatibleValue(targets[0]!,value))throw new Error(`目标工作流不支持当前${semantic==="duration"?"时长":"画面比例"}，输入未丢弃。`);
+      result.parameterValues[targets[0]!.id]=value;
+    }
+  }
   const oldParameters = previous?.parameters ?? [];
   for (const source of oldParameters.filter(item => item.semanticType === "prompt" && item.visible !== false)) {
     const targets = next.parameters.filter(item => item.visible !== false && item.semanticType === source.semanticType && item.valueType === source.valueType);
@@ -67,7 +101,7 @@ export function transferDraft(current: CreateJobDraft, previous: WorkflowView | 
   for (const parameter of next.parameters) {
     // Semantic similarity is not compatibility across different node classes.
     // Never transfer model internals (sampler, scheduler, steps, CFG, etc.).
-    const portable = mode === "digital-human" ? ["prompt"] : ["prompt", "duration", "aspect_ratio", "resolution", "upscale_factor"];
+    const portable = ["prompt"];
     if (parameter.visible === false || !portable.includes(parameter.semanticType)) continue;
     const candidates = oldParameters.filter(item => item.visible !== false && item.semanticType === parameter.semanticType && item.valueType === parameter.valueType);
     const source = candidates.find(item => item.key === parameter.key) ?? (candidates.length === 1 ? candidates[0] : undefined);
@@ -93,6 +127,7 @@ export function transferDraft(current: CreateJobDraft, previous: WorkflowView | 
 }
 export function clearDraftInputs(draft: CreateJobDraft, workflow: WorkflowView): CreateJobDraft {
   let result = cloneDraft(draft);
+  result.taskName = undefined;
   for (const parameter of workflow.parameters) {
     if (parameter.semanticType === "prompt" && parameter.visible !== false) result.parameterValues[parameter.id] = "";
     if (isMediaParameter(parameter)) result = setDraftMedia(result, parameter, { enabled: false, mode: "clear" });
@@ -105,6 +140,11 @@ export function prepareDraft(draft: CreateJobDraft, workflow: WorkflowView, mode
   const issue = visibleMedia(workflow, mode).find(parameter => parameter.mappingIssue);
   if (issue) throw new Error(issue.mappingIssue);
   let result = cloneDraft(draft);
+  for(const semantic of ["duration","aspect_ratio"] as const){
+    const value=result.commonInputs?.[semantic];
+    const targets=workflow.parameters.filter(p=>p.visible!==false&&p.semanticType===semantic);
+    if(value!==undefined&&targets.length===1){if(!compatibleValue(targets[0]!,value))throw new Error("公共参数与当前工作流不兼容");result.parameterValues[targets[0]!.id]=value;}
+  }
   const allowed = new Set(visibleMedia(workflow, mode).map(item => item.id));
   for (const parameter of workflow.parameters) {
     if (isMediaParameter(parameter) && !allowed.has(parameter.id)) result = setDraftMedia(result, parameter, { enabled: false, mode: "clear" });

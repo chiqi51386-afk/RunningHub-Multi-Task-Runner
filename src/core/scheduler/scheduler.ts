@@ -1,3 +1,4 @@
+import { H3_OPTIMIZATION_ROUTES } from "../gemini/routes.js";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
@@ -13,6 +14,9 @@ import { normalizedJobResult, normalizeRunningHubResponse } from "../runninghub/
 import type { AccountState, Job, JobError, RunningHubConfig } from "../types.js";
 
 export class Scheduler {
+  optimizePrompt?: (job: Job, signal: AbortSignal) => Promise<{ parameterId: string; text: string }>;
+  private readonly optimizingJobs = new Set<string>();
+  private readonly maxConcurrentOptimizations = 4;
   private running = false;
   isRunning(): boolean { return this.running; }
   private scheduling = false;
@@ -46,7 +50,7 @@ export class Scheduler {
     // while the application was closed. Account refresh events allow newly
     // healthy accounts to start claiming queued work before the audit ends.
     const startupAudit = this.accounts.list().filter(account =>
-      account.enabled && !account.manualDisabled && !account.currentJobId);
+      account.enabled && !account.manualDisabled && (account.activeJobCount ?? 0) < (account.maxConcurrency ?? 1));
     for (const account of startupAudit) this.startupAuditPending.add(account.id);
     for (const account of startupAudit) {
       if (!this.running) break;
@@ -224,6 +228,7 @@ export class Scheduler {
     if (!this.running || this.scheduling) return;
     this.scheduling = true;
     try {
+      while(this.optimizingJobs.size<this.maxConcurrentOptimizations && this.launchOptimization()) { /* fill optimizer slots */ }
       // A remote task can outlive its local job (for example when another
       // client submitted it, or an older app version lost/deleted its local
       // record). Keep transient account states fresh even when our local
@@ -235,8 +240,8 @@ export class Scheduler {
       while (this.running && this.db.pendingCount() > 0) {
         let available = this.availableAccounts();
         if (!available.length) {
-          const candidates = this.accounts.list().filter(account => account.enabled && !account.manualDisabled && !account.currentJobId &&
-            (["UNCHECKED", "REMOTE_BUSY", "TEMP_UNAVAILABLE", "NO_BALANCE", "INVALID_KEY"].includes(account.state) ||
+          const candidates = this.accounts.list().filter(account => account.enabled && !account.manualDisabled && (account.activeJobCount ?? 0) < (account.maxConcurrency ?? 1) &&
+            (["UNCHECKED", "REMOTE_BUSY", "BUSY", "TEMP_UNAVAILABLE", "NO_BALANCE", "INVALID_KEY"].includes(account.state) ||
               (account.state === "COOLDOWN" && (account.cooldownUntil ?? 0) <= Date.now())));
           const staleCandidates = candidates.filter(account => this.accountProbeDue(account));
           if (staleCandidates.length) {
@@ -251,7 +256,7 @@ export class Scheduler {
             const nextCheckAt = Math.min(...candidates.map(account => this.accountNextProbeAt(account)));
             this.queueAccountWake(Math.max(10, nextCheckAt - Date.now()));
           }
-          const futureCooldowns = this.accounts.list().filter(account => account.enabled && !account.currentJobId &&
+          const futureCooldowns = this.accounts.list().filter(account => account.enabled && (account.activeJobCount ?? 0) < (account.maxConcurrency ?? 1) &&
             account.state === "COOLDOWN" && (account.cooldownUntil ?? 0) > Date.now());
           if (futureCooldowns.length) {
             const wakeAt = Math.min(...futureCooldowns.map(account => account.cooldownUntil!));
@@ -296,11 +301,43 @@ export class Scheduler {
     return claimedAny;
   }
 
+  private launchOptimization(): boolean {
+    if (!this.running || this.optimizingJobs.size>=this.maxConcurrentOptimizations) return false;
+    const job = this.jobs.list(["OPTIMIZE_PENDING"]).sort((a,b)=>a.createdAt-b.createdAt)[0];
+    if (!job) return false;
+    this.optimizingJobs.add(job.id);
+    const controller = new AbortController();
+    this.controllers.set(job.id, controller);
+    this.jobs.transition(job.id, "OPTIMIZING");
+    const promise = (async () => {
+      try {
+        if (!this.optimizePrompt) throw new Error("生成词优化服务未初始化");
+        const result = await this.optimizePrompt(job, controller.signal);
+        if (controller.signal.aborted || this.jobs.get(job.id)?.status !== "OPTIMIZING") return;
+        const target = job.profileSnapshot.parameters.find(p=>p.id===result.parameterId && p.key===H3_OPTIMIZATION_ROUTES[job.runningHubWorkflowId]?.prompt && p.semanticType==='prompt');
+        if (!target || !result.text.trim()) throw new Error("优化结果映射无效");
+        this.jobs.transition(job.id, "PENDING", { parameters: {...job.parameters, [result.parameterId]:result.text}, lastError:null });
+      } catch (error) {
+        if (this.jobs.get(job.id)?.status !== "OPTIMIZING") return;
+        if (controller.signal.aborted) this.jobs.transition(job.id, "OPTIMIZE_PENDING");
+        else this.jobs.transition(job.id, "FAILED", { completedAt:Date.now(), lastError:{code:"WORKFLOW_VALIDATION",phase:"optimize",message:`生成词优化失败，未提交视频：${error instanceof Error ? error.message : '未知错误'}`,retryable:false,accountRelated:false,safeToReassign:false} });
+      }
+    })().finally(()=>{
+      if(controller.signal.aborted && this.jobs.get(job.id)?.status === "OPTIMIZING") this.jobs.transition(job.id,"OPTIMIZE_PENDING");
+      this.controllers.delete(job.id);
+      this.activePromises.delete(promise);
+      this.optimizingJobs.delete(job.id);
+      if(this.running) void this.schedule();
+    });
+    this.activePromises.add(promise);
+    return true;
+  }
+
   private async refreshTransientAccounts(): Promise<void> {
     const now = Date.now();
     const isTransient = (account: ReturnType<AccountPool["list"]>[number]) =>
-      account.enabled && !account.manualDisabled && !account.currentJobId &&
-      ["REMOTE_BUSY", "TEMP_UNAVAILABLE", "COOLDOWN", "NO_BALANCE", "INVALID_KEY"].includes(account.state);
+      account.enabled && !account.manualDisabled && (account.activeJobCount ?? 0) < (account.maxConcurrency ?? 1) &&
+      ["REMOTE_BUSY", "BUSY", "TEMP_UNAVAILABLE", "COOLDOWN", "NO_BALANCE", "INVALID_KEY"].includes(account.state);
     const candidates = this.accounts.list().filter(isTransient);
     const due = candidates.filter(account => this.accountProbeDue(account, now));
 
@@ -480,7 +517,7 @@ export class Scheduler {
         : detail.code === "RATE_LIMIT" ? "COOLDOWN" : "REMOTE_BUSY";
       const autoDisable = detail.code === "ACCOUNT_INVALID_KEY" || detail.code === "ACCOUNT_NO_BALANCE";
       this.db.updateAccount(job.accountId!, {
-        state: accountState, currentJobId: null, autoDisabled: autoDisable,
+        state: accountState, autoDisabled: autoDisable,
         autoDisabledReason: autoDisable ? detail.code.toLowerCase() : null,
         cooldownUntil: detail.code === "RATE_LIMIT" ? Date.now() + this.config.accountCooldownMs : null,
         lastErrorAt: Date.now(),
@@ -488,6 +525,7 @@ export class Scheduler {
       const requeued = this.jobs.transition(job.id, "PENDING", {
         accountId: null, lastError: detail, assignedAt: null, submitStartedAt: null,
       });
+      this.accounts.release(job.accountId!,job.id,false,accountState);
       this.events.emit("account.updated", this.db.getAccount(job.accountId!)!);
       this.logger.warn("Pre-task account failure; job returned to global queue", {
         jobId: requeued.id, accountId: job.accountId, phase: "SUBMITTING",
@@ -522,10 +560,11 @@ export class Scheduler {
         : detail.code === "ACCOUNT_NO_BALANCE" ? "NO_BALANCE" : "TEMP_UNAVAILABLE";
       const autoDisable = detail.code === "ACCOUNT_INVALID_KEY" || detail.code === "ACCOUNT_NO_BALANCE";
       this.db.updateAccount(job.accountId!, {
-        state: accountState, currentJobId: null, autoDisabled: autoDisable,
+        state: accountState, autoDisabled: autoDisable,
         autoDisabledReason: autoDisable ? detail.code.toLowerCase() : null, lastErrorAt: Date.now(),
       });
       this.jobs.transition(job.id, "PENDING", { accountId: null, lastError: detail, assignedAt: null });
+      this.accounts.release(job.accountId!,job.id,false,accountState);
       this.events.emit("account.updated", this.db.getAccount(job.accountId!)!);
       return;
     }
@@ -606,6 +645,7 @@ export class Scheduler {
 
   private async recoverJobs(): Promise<void> {
     for (let job of this.jobs.list()) {
+      if (job.status === "OPTIMIZING") job = this.jobs.recoverTransition(job.id,"OPTIMIZE_PENDING");
       if (!job.outputDir && !["COMPLETED", "FAILED", "CANCELLED", "SUBMIT_UNKNOWN"].includes(job.status)) {
         job = this.db.updateJob(job.id, { outputDir: this.config.outputDir });
         this.events.emit("job.updated", job);

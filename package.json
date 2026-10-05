@@ -1,6 +1,6 @@
 {
   "name": "runninghub-multi-task-runner-core",
-  "version": "0.1.52",
+  "version": "1.0.0-beta.1",
   "private": true,
   "type": "module",
   "description": "RunningHub 多工作流、多任务、多账号桌面客户端",
@@ -9,7 +9,9 @@
     "dist/",
     "frontend/dist/",
     "desktop/preload.cjs",
+    "desktop/assets/",
     "bundled-workflows/",
+    "prompt-skills/",
     "THIRD_PARTY_LICENSES/",
     "README.md"
   ],
@@ -62,7 +64,9 @@
       "dist/src/**/*",
       "frontend/dist/**/*",
       "desktop/preload.cjs",
+      "desktop/assets/**/*",
       "bundled-workflows/**/*",
+      "prompt-skills/**/*",
       "package.json"
     ],
     "extraResources": [
@@ -70,6 +74,7 @@
       "THIRD_PARTY_LICENSES/**/*"
     ],
     "mac": {
+      "icon": "desktop/assets/icon.png",
       "target": [{ "target": "zip", "arch": ["arm64"] }],
       "artifactName": "RunningHub-Runner-v${version}-macos-${arch}.${ext}",
       "category": "public.app-category.video",
@@ -77,6 +82,7 @@
       "notarize": false
     },
     "win": {
+      "icon": "desktop/assets/icon.ico",
       "target": [
         {
           "target": "dir",

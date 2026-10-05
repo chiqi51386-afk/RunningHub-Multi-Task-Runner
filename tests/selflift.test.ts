@@ -8,7 +8,7 @@ import { createModeForWorkflow, generationParameterOrder, migrateParameterView }
 import type { WorkflowView } from "../frontend/src/types.js";
 
 function load(file: string): WorkflowView {
-  const pkg = parsePortableWorkflowPackage(JSON.parse(readFileSync(`bundled-workflows/${file}.rhworkflow.json`, "utf8")));
+  const pkg = parsePortableWorkflowPackage(JSON.parse(readFileSync(`${["ltx-2.3-digital-human","minimax-h3-multi-reference","minimax-h3-selflift"].includes(file)?"tests/fixtures/retired-workflows":"bundled-workflows"}/${file}.rhworkflow.json`, "utf8")));
   const profile = materializePortableProfile(pkg, file, 1, 0, 0);
   return { id: file, name: pkg.workflow.name, runningHubWorkflowId: pkg.workflow.runningHubWorkflowId,
     profileVersion: 1, parameters: profile.parameters } as WorkflowView;
@@ -24,7 +24,7 @@ test("SelfLift exposes the reviewed controls and submits their exact targets", (
   assert.equal(migrateParameterView(controls[2]!).semanticType, "target_resolution");
   const draft = createDraft(workflow);
   assert.equal(draft.instanceType, "default");
-  const pkg = parsePortableWorkflowPackage(JSON.parse(readFileSync("bundled-workflows/minimax-h3-selflift.rhworkflow.json", "utf8")));
+  const pkg = parsePortableWorkflowPackage(JSON.parse(readFileSync("tests/fixtures/retired-workflows/minimax-h3-selflift.rhworkflow.json", "utf8")));
   const profile = materializePortableProfile(pkg, workflow.id, 1);
   const values = buildNodeInfoList(profile, draft.parameterValues);
   for (const p of controls) assert.equal(values.find(v => v.nodeId === p.nodeId && v.fieldName === p.fieldName)?.fieldValue, p.defaultValue);

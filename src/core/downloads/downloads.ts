@@ -1,5 +1,5 @@
 import path from "node:path";
-import { outputFilename, productionOutputPath, shortOutputPath } from "./naming.js";
+import { jobOutputPath } from "./naming.js";
 import type { BackendEvents } from "../events.js";
 import type { Jobs } from "../jobs/jobs.js";
 import type { Logger } from "../logger.js";
@@ -92,13 +92,7 @@ export class DownloadQueue {
       for (let index = 0; index < originalOutputs.files.length; index += 1) {
         const file = originalOutputs.files[index]!;
         const ext = safeOutputExtension(file);
-        const filename = job.profileSnapshot.downloadIdentity
-          ? shortOutputPath({identity:job.profileSnapshot.downloadIdentity, production:job.profileSnapshot.production, rule:job.profileSnapshot.downloadNamingRule ?? 'workflow-date',workflow:job.workflowName,index,total:originalOutputs.files.length,url:file.url,extension:ext})
-          : job.profileSnapshot.production
-          ? productionOutputPath(job.profileSnapshot.production, job.id, index, ext)
-          : job.profileSnapshot.downloadNamingRule
-          ? outputFilename({ rule: job.profileSnapshot.downloadNamingRule, createdAt: job.createdAt, workflow: job.workflowName, jobId: job.id, index, url: file.url, extension: ext })
-          : `job_${job.id}_${String(index + 1).padStart(2, "0")}.${ext}`;
+        const filename = jobOutputPath(job,index,originalOutputs.files.length,file.url,ext);
         const destination = path.join(outputDir, filename);
         const localPath = await downloadFile(this.fetchImpl, this.config, file.url, destination, signal);
         files.push({ ...file, localPath });

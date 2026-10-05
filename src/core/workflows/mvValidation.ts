@@ -1,6 +1,6 @@
 import type { WorkflowProfile } from "../types.js";
 
-export const MV_WORKFLOW_ID = "2104166509705986049";
+export const MV_WORKFLOW_ID = "2107063778012905474";
 /** Validate the exact API targets, not inferred semantic names. */
 export function validateMvInput(profile: WorkflowProfile, parameters: Record<string, unknown>, media: { parameterId: string; localPath: string }[]) {
   const parameter = (key: string, classType: string) => {

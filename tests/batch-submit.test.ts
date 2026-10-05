@@ -12,9 +12,10 @@ test("production sequence survives database snapshots; resubmission receives a n
   const jobs = new Jobs(db, events);
   try {
     const wf = new Workflows(db, events).importApiJson({ name: "production", runningHubWorkflowId: "123456789012", workflow: { "1": { class_type: "Text", inputs: { text: "test" } } } });
-    const inputs = [1, 2, 3].map(segmentIndex => ({workflowId: wf.id, parameters: {}, production: {groupId: 'client-group', segmentIndex}}));
+    const inputs = [1, 2, 3].map(segmentIndex => ({workflowId: wf.id, taskName:'广告任务', parameters: {}, production: {groupId: 'client-group', segmentIndex}}));
     const first = jobs.createBatch(inputs), second = jobs.createBatch(inputs);
     assert.equal(new Set(first.map(job => job.profileSnapshot.production!.groupId)).size, 1);
+    assert.deepEqual(first.map(job=>jobs.get(job.id)!.profileSnapshot.taskName), ['广告任务','广告任务','广告任务']);
     assert.notEqual(first[0]!.profileSnapshot.production!.groupId, second[0]!.profileSnapshot.production!.groupId);
     assert.deepEqual(first.map(job => jobs.get(job.id)!.profileSnapshot.production!.segmentIndex), [1, 2, 3]);
     assert.equal(new Set(first.map(job => job.profileSnapshot.downloadIdentity!.group)).size, 1);

@@ -22,7 +22,7 @@ export function mapReferenceMedia(raw: Record<string, unknown>, parameters: Work
   }
   function visit(value: unknown, field: string): void {
     if (link(value)) {
-      const match = field.match(/(?:ref|reference)[_-]?(image|audio|video)[_-](\d+)$/i);
+      const match = field === "first_frame" ? ["first_frame", "image", "0"] : field === "last_frame" ? ["last_frame", "image", "1"] : field.match(/(?:ref|reference)[_-]?(image|audio|video)[_-](\d+)$/i);
       if (!match) return;
       const found = sources(String(value[0]), match[1]!.toLowerCase());
       const slot = `${match[1]!.toLowerCase()}:${Number(match[2])}`;

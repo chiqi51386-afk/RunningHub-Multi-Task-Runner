@@ -7,9 +7,9 @@
     "version": "0.1.34"
   },
   "workflow": {
-    "name": "H3数字人MV",
-    "runningHubWorkflowId": "2104166509705986049",
-    "sourceUrl": "https://www.runninghub.cn/workflow/2104166509705986049",
+    "name": "H3数字人",
+    "runningHubWorkflowId": "2107063778012905474",
+    "sourceUrl": "https://www.runninghub.cn/workflow/2107063778012905474",
     "apiJson": {
       "34": {
         "inputs": {
@@ -252,33 +252,6 @@
           "title": "ModelAttentionBackend"
         }
       },
-      "58": {
-        "inputs": {
-          "chunks": 2,
-          "seq_threshold": 4096,
-          "model": [
-            "57",
-            0
-          ]
-        },
-        "class_type": "MiniMaxChunkFeedForward",
-        "_meta": {
-          "title": "MiniMax H3 ChunkFeedForward"
-        }
-      },
-      "59": {
-        "inputs": {
-          "head_chunks": 4,
-          "model": [
-            "58",
-            0
-          ]
-        },
-        "class_type": "MiniMaxLowVRAMAttention",
-        "_meta": {
-          "title": "MiniMax H3 Low VRAM Attention"
-        }
-      },
       "61": {
         "inputs": {
           "aspect_ratio": "9:16 (Portrait Widescreen)",
@@ -302,7 +275,7 @@
           "preview_fps": 12,
           "tiny_vae": "taeh3.safetensors",
           "model": [
-            "59",
+            "57",
             0
           ]
         },
@@ -424,7 +397,7 @@
           "rho": 0,
           "w_min": 0.5,
           "w_max": 1,
-          "upscaler_model": "minimax_h3_latent_upscaler_3d_fp16.safetensors",
+          "upscaler_model": "h3_upscaler_lms_v0.1_fp32.safetensors",
           "highres_tiling": true,
           "model": [
             "62",
@@ -542,7 +515,7 @@
         }
       }
     },
-    "workflowHash": "4ec21f71e3de9fa040f1e08e1673c518eae2d42f489e78f57385d9216483198c"
+    "workflowHash": "ceb4eebe2637276f0de666f622118323c840c45c3f12d89d78898e6e6ef5ff19"
   },
   "profile": {
     "name": "H3数字人MV",
@@ -860,51 +833,6 @@
         "confidence": 1,
         "showEnableToggle": false,
         "id": "57_attention",
-        "visible": false,
-        "submitDefault": false
-      },
-      {
-        "key": "58.chunks",
-        "nodeId": "58",
-        "fieldName": "chunks",
-        "classType": "MiniMaxChunkFeedForward",
-        "nodeTitle": "MiniMax H3 ChunkFeedForward",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 2,
-        "confidence": 1,
-        "showEnableToggle": false,
-        "id": "58_chunks",
-        "visible": false,
-        "submitDefault": false
-      },
-      {
-        "key": "58.seq_threshold",
-        "nodeId": "58",
-        "fieldName": "seq_threshold",
-        "classType": "MiniMaxChunkFeedForward",
-        "nodeTitle": "MiniMax H3 ChunkFeedForward",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 4096,
-        "confidence": 1,
-        "showEnableToggle": false,
-        "id": "58_seq_threshold",
-        "visible": false,
-        "submitDefault": false
-      },
-      {
-        "key": "59.head_chunks",
-        "nodeId": "59",
-        "fieldName": "head_chunks",
-        "classType": "MiniMaxLowVRAMAttention",
-        "nodeTitle": "MiniMax H3 Low VRAM Attention",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 4,
-        "confidence": 1,
-        "showEnableToggle": false,
-        "id": "59_head_chunks",
         "visible": false,
         "submitDefault": false
       },
@@ -1334,7 +1262,7 @@
         "nodeTitle": "selflift-Avatar Sampler (MiniMax H3)",
         "valueType": "string",
         "semanticType": "unknown",
-        "defaultValue": "minimax_h3_latent_upscaler_3d_fp16.safetensors",
+        "defaultValue": "h3_upscaler_lms_v0.1_fp32.safetensors",
         "confidence": 1,
         "showEnableToggle": false,
         "id": "78_upscaler_model",
@@ -1404,7 +1332,7 @@
         "visible": true,
         "submitDefault": true,
         "label": "片段时长（秒）",
-          "min": 0.01,
+        "min": 0.01,
         "step": 0.01
       },
       {
@@ -1681,51 +1609,6 @@
         "confidence": 1,
         "showEnableToggle": false,
         "id": "57_attention",
-        "visible": false,
-        "submitDefault": false
-      },
-      {
-        "key": "58.chunks",
-        "nodeId": "58",
-        "fieldName": "chunks",
-        "classType": "MiniMaxChunkFeedForward",
-        "nodeTitle": "MiniMax H3 ChunkFeedForward",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 2,
-        "confidence": 1,
-        "showEnableToggle": false,
-        "id": "58_chunks",
-        "visible": false,
-        "submitDefault": false
-      },
-      {
-        "key": "58.seq_threshold",
-        "nodeId": "58",
-        "fieldName": "seq_threshold",
-        "classType": "MiniMaxChunkFeedForward",
-        "nodeTitle": "MiniMax H3 ChunkFeedForward",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 4096,
-        "confidence": 1,
-        "showEnableToggle": false,
-        "id": "58_seq_threshold",
-        "visible": false,
-        "submitDefault": false
-      },
-      {
-        "key": "59.head_chunks",
-        "nodeId": "59",
-        "fieldName": "head_chunks",
-        "classType": "MiniMaxLowVRAMAttention",
-        "nodeTitle": "MiniMax H3 Low VRAM Attention",
-        "valueType": "integer",
-        "semanticType": "unknown",
-        "defaultValue": 4,
-        "confidence": 1,
-        "showEnableToggle": false,
-        "id": "59_head_chunks",
         "visible": false,
         "submitDefault": false
       },
@@ -2037,7 +1920,7 @@
         "nodeTitle": "selflift-Avatar Sampler (MiniMax H3)",
         "valueType": "string",
         "semanticType": "unknown",
-        "defaultValue": "minimax_h3_latent_upscaler_3d_fp16.safetensors",
+        "defaultValue": "h3_upscaler_lms_v0.1_fp32.safetensors",
         "confidence": 1,
         "showEnableToggle": false,
         "id": "78_upscaler_model",

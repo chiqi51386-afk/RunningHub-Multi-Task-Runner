@@ -21,5 +21,5 @@ test("MV editor has no queued/submitted state; regeneration replaces instead of 
   assert.ok(!source.includes("previousDraft"));
   assert.ok(!source.includes("恢复重新生成前的草稿"));
   assert.ok(source.includes("function clearAllInputs()"));
-  assert.ok(source.includes("setSegments([0, 10].map(start =>"));
+  assert.ok(source.includes("setSegments([makeSegment(empty)])"));
 });

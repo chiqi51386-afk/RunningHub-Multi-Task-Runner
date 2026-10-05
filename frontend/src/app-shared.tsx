@@ -10,6 +10,7 @@ export const stateLabel: Record<AccountState, string> = {
 };
 
 export const statusLabel: Record<JobStatus, string> = {
+  OPTIMIZE_PENDING: "等待优化", OPTIMIZING: "优化中",
   PENDING: "等待中", ASSIGNED: "已分配", UPLOADING: "上传中", SUBMITTING: "提交中",
   SUBMIT_UNKNOWN: "提交状态未知", REMOTE_QUEUED: "远端排队", RUNNING: "生成中",
   REMOTE_SUCCESS: "生成完成", DOWNLOAD_PENDING: "待下载", DOWNLOADING: "下载中",
@@ -17,7 +18,7 @@ export const statusLabel: Record<JobStatus, string> = {
 };
 
 export const terminalJobStatuses = new Set<JobStatus>(["COMPLETED", "FAILED", "CANCELLED", "SUBMIT_UNKNOWN"]);
-export const activeJobStatuses = new Set<JobStatus>(["ASSIGNED", "UPLOADING", "SUBMITTING", "REMOTE_QUEUED", "RUNNING", "REMOTE_SUCCESS", "DOWNLOAD_PENDING", "DOWNLOADING", "RETRY_WAIT"]);
+export const activeJobStatuses = new Set<JobStatus>(["OPTIMIZE_PENDING", "OPTIMIZING", "ASSIGNED", "UPLOADING", "SUBMITTING", "REMOTE_QUEUED", "RUNNING", "REMOTE_SUCCESS", "DOWNLOAD_PENDING", "DOWNLOADING", "RETRY_WAIT"]);
 
 export interface UiPreferences {
   notificationDurationMs: number;

@@ -1,0 +1,51 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {parsePortableWorkflowPackage, materializePortableProfile} from '../src/core/workflows/package.js';
+import {resolveMediaInputs} from '../src/core/workflows/mediaInputs.js';
+import {buildNodeInfoList} from '../src/core/workflows/nodeInfo.js';
+import {optimizeH3, sharpInputs} from '../src/core/gemini/h3Optimizer.js';
+import {selectOptimization} from '../src/core/gemini/selection.js';
+import {createDraft, clearDraftInputs} from '../frontend/src/task-draft.js';
+import type {WorkflowRecord} from '../src/core/types.js';
+import type {WorkflowView} from '../frontend/src/types.js';
+const pkg=parsePortableWorkflowPackage(JSON.parse(readFileSync('bundled-workflows/h3-first-last.rhworkflow.json','utf8')));
+const profile=materializePortableProfile(pkg,'fl',1);
+const workflow:WorkflowRecord={id:'fl',name:pkg.workflow.name,runningHubWorkflowId:pkg.workflow.runningHubWorkflowId,raw:pkg.workflow.apiJson,workflowHash:pkg.workflow.workflowHash,profileVersion:1,profile,createdAt:0,updatedAt:0};
+const parameters=Object.fromEntries(profile.parameters.map(p=>[p.id,p.defaultValue]));
+const prompt=profile.parameters.find(p=>p.semanticType==='prompt')!;
+parameters[prompt.id]='人物向镜头走来';
+test('first/last immutable node bindings and cleared placeholders',()=>{
+ const images=profile.parameters.filter(p=>p.valueType==='image');
+ assert.deepEqual(images.map(p=>[p.nodeId,p.referenceIndex,p.defaultValue]),[['150',0,''],['222',1,'']]);
+ assert.equal(workflow.runningHubWorkflowId,'2106994828660080641');
+ const resolved=resolveMediaInputs(profile,parameters,{});
+ const entries=buildNodeInfoList(profile,resolved.parameters);
+ for(const id of ['150','222'])assert.equal(entries.find(e=>e.nodeId===id&&e.fieldName==='image')?.fieldValue,'');
+ const changed=structuredClone(workflow);(changed.raw['136'] as any).inputs.first_frame=['222',0];
+ assert.throws(()=>sharpInputs(changed,{workflowId:'fl',parameters}),/连接/);
+ assert.deepEqual(selectOptimization(workflow,{...parameters},true,false,'test-model'),{model:'test-model'});
+});
+for(const [slots,mode] of [[[0],'I2VA'],[[1],'L2VA'],[[0,1],'FL2VA']] as const)test(`first/last optimization ${mode}`,async()=>{
+ const images=profile.parameters.filter(p=>p.valueType==='image');
+ const resolved=resolveMediaInputs(profile,parameters,Object.fromEntries(slots.map(i=>[images[i]!.id,{mode:'replace',localPath:`${i}.png`}])));
+ const result=await optimizeH3(workflow,{workflowId:'fl',...resolved},{generate:async input=>{
+  const context=JSON.parse(input.text);assert.equal(context.mode,mode);
+  assert.deepEqual(context.keyframeRoles,slots.map((i,index)=>({picture:index+1,role:i===0?'first_frame':'last_frame'})));
+  assert.deepEqual(input.images?.map(i=>i.referenceIndex),slots.map((_,i)=>i+1));
+  assert.ok(input.systemInstruction?.includes('base-en.txt'));
+  return {text:'optimized',keyId:'test',model:'test'};
+ }},async()=>({mimeType:'image/png',data:'YWJj'}));
+ assert.equal(result.parameterId,prompt.id);
+});
+test('INF negative prompt is editable, mapped, and not cleared with media',()=>{
+ const inf=parsePortableWorkflowPackage(JSON.parse(readFileSync('bundled-workflows/infinitetalk-digital-human.rhworkflow.json','utf8')));
+ const p=materializePortableProfile(inf,'inf',1);
+ const view={id:'inf',profileVersion:1,parameters:p.parameters} as WorkflowView;
+ const negative=p.parameters.find(x=>x.semanticType==='negative_prompt')!;
+ assert.equal(negative.key,'114.negative_prompt');assert.ok(negative.defaultValue);
+ const draft=createDraft(view);draft.parameterValues[negative.id]='自定义负面词';
+ const cleared=clearDraftInputs(draft,view);
+ assert.equal(cleared.parameterValues[negative.id],'自定义负面词');
+ assert.equal(buildNodeInfoList(p,cleared.parameterValues).find(e=>e.nodeId==='114'&&e.fieldName==='negative_prompt')?.fieldValue,'自定义负面词');
+});

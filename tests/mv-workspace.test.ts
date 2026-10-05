@@ -33,11 +33,16 @@ test("audited MV successor preserves user inputs but adopts new hidden tiling de
   assert.equal(restored.parameterValues[p("78.highres_tiling").id], true);
 });
 test("MV mode and exact exported prompt/audio/image graph", () => {
-  assert.equal(workflow.runningHubWorkflowId, "2104166509705986049");
+  assert.equal(workflow.runningHubWorkflowId, "2107063778012905474");
   assert.equal((pkg.workflow.apiJson as any)["78"].inputs.highres_tiling, true);
   assert.equal(p("78.highres_tiling").defaultValue, true);
   assert.equal(createModeForWorkflow(workflow), "h3-mv");
   const raw = pkg.workflow.apiJson as any;
+  assert.equal(raw['58'], undefined);
+  assert.equal(raw['59'], undefined);
+  assert.deepEqual(raw['62'].inputs.model, ['57',0]);
+  assert.equal(raw['78'].inputs.upscaler_model, 'h3_upscaler_lms_v0.1_fp32.safetensors');
+  assert.equal(p('78.upscaler_model').defaultValue, raw['78'].inputs.upscaler_model);
   assert.deepEqual(raw["42"].inputs.prompt, ["87", 0]);
   assert.deepEqual(raw["78"].inputs.positive, ["42", 0]);
   assert.deepEqual(raw["84"].inputs.source, ["71", 1]);
@@ -49,6 +54,14 @@ test("MV mode and exact exported prompt/audio/image graph", () => {
     assert.equal(raw[id].inputs.image, "");
   });
   assert.equal(raw["34"].inputs.audio, "");
+});
+test('MV task name is shared across all segments and survives preparation', () => {
+  const shared = valid(); shared.taskName='越南广告';
+  const drafts = [0,10,20].map(start=>applyMvShared(valid(start),shared,workflow));
+  assert.deepEqual(prepareMvBatch(drafts,workflow).map(d=>d.taskName),['越南广告','越南广告','越南广告']);
+  const previous=valid(7);previous.taskName='保留名称';previous.profileVersion=0;
+  previous.workflowSnapshot={...workflow,runningHubWorkflowId:'2104166509705986049'};
+  assert.equal(restoreDraft(previous,[workflow],workflow,()=>{}).taskName,'保留名称');
 });
 test("Three independent segments preserve final API targets and clear unused images", () => {
   const drafts = [0, 10.5, 20.75].map(valid);

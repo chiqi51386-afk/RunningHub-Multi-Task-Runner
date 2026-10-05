@@ -3,7 +3,7 @@ import { useDebouncedSave } from "./useDebouncedSave";
 import { Plus, Trash2, ArrowRight } from "lucide-react";
 import type { CreateJobDraft, WorkflowView, WorkflowParameterView, MediaParameterDraft } from "./types";
 import { MediaField, ParameterField } from "./MediaFields";
-import { cloneDraft, exchangeImages, setDraftMedia, visibleMedia } from "./task-draft";
+import { cloneDraft, exchangeImages, setDraftMedia, visibleMedia, taskOptimizationEnabled } from "./task-draft";
 import { isSavedDraft, readSaved, serializeDraft, restoreDraft } from "./draft-storage";
 import { applyMvShared, mvParameter, newMvDraft, prepareMvBatch } from "./mv-draft";
 
@@ -12,12 +12,12 @@ import type { CreateBatchItem } from "./production-batch";
 type Props = {
   workflow: WorkflowView; initialDraft?: CreateJobDraft;
   batch: CreateBatchItem[]; setBatch: React.Dispatch<React.SetStateAction<CreateBatchItem[]>>;
-  batchPanel: React.ReactNode; editRequest?: CreateBatchItem;
+  editRequest?: CreateBatchItem;
   submissionLock: React.MutableRefObject<boolean>;
   submitting: "single" | "batch" | null;
 };
 const storageKey = "rh-runner.mv-segments.v1";
-export function MvWorkspace({ workflow, initialDraft, batch, setBatch, batchPanel, editRequest, submissionLock, submitting }: Props) {
+export function MvWorkspace({ workflow, initialDraft, batch, setBatch, editRequest, submissionLock, submitting }: Props) {
   const makeSegment = (draft: CreateJobDraft): Segment => ({ id: crypto.randomUUID(), draft: cloneDraft(draft), slots: 2 });
   const [segments, setSegments] = useState<Segment[]>(() => {
     if (initialDraft) return [makeSegment(initialDraft)];
@@ -28,7 +28,7 @@ export function MvWorkspace({ workflow, initialDraft, batch, setBatch, batchPane
         return { id: s.id, draft, slots: 2 };
       } catch { return { id: s.id, draft: s.draft, slots: 2 }; }
     });
-    return [0, 10].map(start => makeSegment(newMvDraft(workflow, start)));
+    return [makeSegment(newMvDraft(workflow))];
   });
   const [shared, setShared] = useState<CreateJobDraft>(() => {
     const saved = readSaved(storageKey + ".shared");
@@ -96,14 +96,11 @@ export function MvWorkspace({ workflow, initialDraft, batch, setBatch, batchPane
       empty.parameterValues[p.id] = shared.parameterValues[p.id];
     }
     empty.instanceType = shared.instanceType;
+    empty.promptOptimizationEnabled = taskOptimizationEnabled(segments[0].draft);
     editorBackup.current = undefined;
     setEditingId(undefined);
     setShared(cloneDraft(empty));
-    setSegments([0, 10].map(start => {
-      const draft = cloneDraft(empty);
-      draft.parameterValues[mvParameter(workflow, "85.start_index").id] = start;
-      return makeSegment(draft);
-    }));
+    setSegments([makeSegment(empty)]);
     setError(undefined);
   }
   function addSegment() {
@@ -117,6 +114,7 @@ export function MvWorkspace({ workflow, initialDraft, batch, setBatch, batchPane
       }
       draft.mediaOverrides[audio.id] = { ...shared.mediaOverrides[audio.id] };
       draft.instanceType = shared.instanceType;
+      draft.promptOptimizationEnabled = taskOptimizationEnabled(last);
       return [...current, makeSegment(draft)];
     });
   }
@@ -158,9 +156,11 @@ export function MvWorkspace({ workflow, initialDraft, batch, setBatch, batchPane
     finally { pickerLock.current = false; setPicking(false); }
   }
   const stagingLock = useRef(false);
+  const stageFeedback = useRef<HTMLDivElement>(null);
+  const [stagedCount,setStagedCount] = useState(0);
   function stage() {
     if (submissionLock.current || pickerLock.current || stagingLock.current) return;
-    stagingLock.current = true; setError(undefined);
+    stagingLock.current = true; setError(undefined); setStagedCount(0);
     try {
       const pending = segments;
       const drafts = prepareMvBatch(pending.map(s => applyMvShared(s.draft, shared, workflow)), workflow);
@@ -173,16 +173,21 @@ export function MvWorkspace({ workflow, initialDraft, batch, setBatch, batchPane
         return;
       }
       setBatch(current => [...current, ...entries]);
+      setStagedCount(entries.length);
     } catch (e) { setError(e instanceof Error ? e.message : "加入批次失败"); }
-    finally { queueMicrotask(() => { stagingLock.current = false; }); }
+    finally { queueMicrotask(() => { stagingLock.current = false; }); requestAnimationFrame(()=>stageFeedback.current?.scrollIntoView({block:'nearest'})); }
   }
   return <div className="mv-workspace">
     {(error || storageError) && <div role="alert">{error || storageError}</div>}
-    <fieldset disabled={busy} className="mv-controls create-layout">
+    <fieldset disabled={busy} className="mv-controls">
       <div className="mv-editor">
+      <div className="mv-global-actions bulk-media-actions">
+        <button type="button" onClick={clearAllInputs}>清空全部输入</button>
+      </div>
       <section className="panel form-panel mv-global">
+        <div className="form-section"><div className="section-content"><label className="parameter-field"><span className="field-label">任务名称（选填）</span><input aria-label="H3数字人任务名称" maxLength={80} value={shared.taskName ?? ""} onChange={e=>changeShared(d=>({...d,taskName:e.target.value}))}/></label></div></div>
         <div className="form-section"><div className="section-content mv-global-audio">
-          <div className="section-title-row"><h2>音频</h2><button type="button" onClick={clearAllInputs}>清空全部输入</button></div>
+          <div className="section-title-row"><h2>音频</h2></div>
           <MediaField parameter={audio} index={1} draft={shared.mediaOverrides[audio.id] ?? { enabled: false, mode: "clear" }}
             onPick={window.runningHub ? () => void pick(undefined, audio) : undefined}
             onDrop={file => void pick(undefined, audio, file)} onMove={() => {}}
@@ -194,7 +199,7 @@ export function MvWorkspace({ workflow, initialDraft, batch, setBatch, batchPane
           <button type="button" className="icon-button" aria-label={`移除第 ${index + 1} 段`} disabled={segments.length === 1} onClick={() => setSegments(current => current.filter(s => s.id !== segment.id))}><Trash2 size={17} /></button>
         </div>
         <div className="mv-segment-body">
-        <div className="content-prompt-block"><div className="content-input-label"><span>生成词</span><button type="button" onClick={() => change(segment.id, d => ({ ...d, parameterValues: { ...d.parameterValues, [mvParameter(workflow, "87.value").id]: "" } }))}>清空生成词</button></div>
+        <div className="content-prompt-block"><div className="content-input-label"><span>生成词</span><div><label className="boolean-field"><span><strong>中文生成词优化</strong></span><button type="button" className={`switch ${taskOptimizationEnabled(segment.draft) ? "checked" : ""}`} aria-label={`第 ${index + 1} 段中文生成词优化`} aria-pressed={taskOptimizationEnabled(segment.draft)} onClick={()=>change(segment.id,d=>({...d,promptOptimizationEnabled:!taskOptimizationEnabled(d)}))}><span/></button></label><button type="button" onClick={() => change(segment.id, d => ({ ...d, parameterValues: { ...d.parameterValues, [mvParameter(workflow, "87.value").id]: "" } }))}>清空生成词</button></div></div>
           <div className="dynamic-grid prompt-input-grid h3-prompt-input"><ParameterField hideLabel parameter={mvParameter(workflow, "87.value")} value={segment.draft.parameterValues[mvParameter(workflow, "87.value").id]} onValue={(p, value) => change(segment.id, d => ({ ...d, parameterValues: { ...d.parameterValues, [p.id]: value } }))} /></div>
         </div>
         <div className="mv-parameters">{(() => {
@@ -244,6 +249,10 @@ export function MvWorkspace({ workflow, initialDraft, batch, setBatch, batchPane
             })}
           </div>
         </div></div>
+        <div ref={stageFeedback} aria-live="polite">
+          {(error || storageError) && <div className="import-feedback error" role="alert">{error || storageError}</div>}
+          {!error && stagedCount>0 && <p role="status">已加入 {stagedCount} 个任务，请在右侧制作批次提交。</p>}
+        </div>
         <div className="submit-bar">
           <div className="instance-mode-control"><span><strong>Plus 高显存</strong></span><button type="button" aria-label="MV Plus 高显存" className={`switch ${shared.instanceType === "plus" ? "checked" : ""}`} aria-pressed={shared.instanceType === "plus"} onClick={() => { const tier = shared.instanceType === "plus" ? "default" : "plus"; changeShared(d => ({ ...d, instanceType: tier })); }}><span /></button></div>
           <button type="button" className="primary" disabled={!segments.length} onClick={stage}>{editingId ? "保存批次修改" : "加入制作批次"}<ArrowRight size={18} /></button>
@@ -251,7 +260,6 @@ export function MvWorkspace({ workflow, initialDraft, batch, setBatch, batchPane
         </div>
       </section>
       </div>
-      {batchPanel}
     </fieldset>
   </div>;
 }

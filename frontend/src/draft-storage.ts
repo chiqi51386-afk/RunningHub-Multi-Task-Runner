@@ -1,7 +1,7 @@
 import type { CreateJobDraft } from "./types.js";
 import { isMvSuccessor } from "./mv-workflow-identity.js";
 import type { WorkflowView } from "./types.js";
-import { createDraft, compatibleValue, isMediaParameter, setDraftMedia } from "./task-draft.js";
+import { taskOptimizationEnabled, createDraft, compatibleValue, isMediaParameter, setDraftMedia } from "./task-draft.js";
 
 /** Archive before resetting: old ephemeral IDs are not proof of node identity. */
 export function restoreDraft(saved: unknown, workflows: WorkflowView[], fallback: WorkflowView | undefined, archive: (draft: CreateJobDraft) => void): CreateJobDraft {
@@ -15,15 +15,20 @@ export function restoreDraft(saved: unknown, workflows: WorkflowView[], fallback
   let restored = createDraft(matching ?? fallback);
   if (!matching || !snapshot || !Array.isArray(snapshot.parameters) || (snapshot.runningHubWorkflowId !== matching.runningHubWorkflowId && !isMvSuccessor(snapshot.runningHubWorkflowId, matching.runningHubWorkflowId))) return restored;
   restored.instanceType = saved.instanceType;
+  restored.taskName = saved.taskName;
+  restored.promptOptimizationEnabled = taskOptimizationEnabled(saved);
+  restored.commonInputs = saved.commonInputs ? {...saved.commonInputs}:undefined;
   if (saved.production) restored.production = { ...saved.production };
   for (const target of matching.parameters) {
-    const sources = snapshot.parameters.filter(item => item.key === target.key && item.valueType === target.valueType && item.semanticType === target.semanticType);
+    // An integer-to-float schema correction must not discard the user's duration.
+    const sources = snapshot.parameters.filter(item => item.key === target.key &&
+      (item.valueType === target.valueType || (item.valueType === "integer" && target.valueType === "number")) && item.semanticType === target.semanticType);
     if (sources.length !== 1 || matching.parameters.filter(item => item.key === target.key).length !== 1 || target.mappingIssue) continue;
     const source = sources[0]!;
     if (isMediaParameter(target)) {
       const media = saved.mediaOverrides[source.id];
       if (media) restored = setDraftMedia(restored, target, { ...media });
-    } else if (target.visible !== false && target.semanticType !== "negative_prompt" && compatibleValue(target, saved.parameterValues[source.id])) {
+    } else if (target.visible !== false && compatibleValue(target, saved.parameterValues[source.id])) {
       restored.parameterValues[target.id] = saved.parameterValues[source.id];
     }
   }
