@@ -3,7 +3,7 @@
   "version": "1.1.0",
   "private": true,
   "type": "module",
-  "description": "RunningHub 多工作流、多任务、多账号桌面客户端",
+  "description": "Desktop app for running workflows through the RunningHub API.",
   "main": "dist/src/desktop/main.js",
   "files": [
     "dist/",
