@@ -152,7 +152,7 @@
 | @types/http-cache-semantics | 4.2.0 | MIT | transitive/development | core |
 | @types/keyv | 3.1.4 | MIT | transitive/development | core |
 | @types/ms | 2.1.0 | MIT | transitive/development | core |
-| @types/node | 24.13.6 | MIT | direct/development | core |
+| @types/node | 24.19.1 | MIT | direct/development | core |
 | @types/react | 19.3.0 | MIT | direct/development | frontend |
 | @types/react-dom | 19.3.0 | MIT | direct/development | frontend |
 | @types/responselike | 1.0.3 | MIT | transitive/development | core |
@@ -241,7 +241,7 @@
 | duplexer2/node_modules/safe-buffer | 5.1.2 | MIT | transitive/development | core |
 | duplexer2/node_modules/string_decoder | 1.1.1 | MIT | transitive/development | core |
 | ejs | 3.1.10 | Apache-2.0 | transitive/development | core |
-| electron | 44.4.3 | MIT | direct/development | core |
+| electron | 44.5.1 | MIT | direct/development | core |
 | electron-builder | 26.15.3 | MIT | direct/development | core |
 | electron-builder-squirrel-windows | 26.15.3 | MIT | transitive/development | core |
 | electron-publish | 26.15.3 | MIT | transitive/development | core |
@@ -418,7 +418,7 @@
 | simple-get | 4.0.1 | MIT | transitive/runtime | core |
 | simple-update-notifier | 2.0.0 | MIT | transitive/development | core |
 | source-map | 0.6.1 | BSD-3-Clause | transitive/development | core |
-| source-map-js | 1.2.1 | BSD-3-Clause | transitive/runtime | frontend |
+| source-map-js | 1.2.2 | BSD-3-Clause | transitive/runtime | frontend |
 | source-map-support | 0.5.21 | MIT | transitive/development | core |
 | sprintf-js | 1.1.3 | BSD-3-Clause | transitive/development | core |
 | stat-mode | 1.0.0 | MIT | transitive/development | core |
@@ -442,20 +442,20 @@
 | tmp-promise | 3.0.3 | MIT | transitive/development | core |
 | truncate-utf8-bytes | 1.0.2 | WTFPL | transitive/development | core |
 | tslib | 2.8.1 | 0BSD | transitive/development | core |
-| tsx | 4.23.13 | MIT | direct/development | core |
+| tsx | 4.23.15 | MIT | direct/development | core |
 | tunnel-agent | 0.6.0 | Apache-2.0 | transitive/runtime | core |
 | type-fest | 0.13.1 | (MIT OR CC0-1.0) | transitive/development | core |
 | typescript | 5.9.3 | Apache-2.0 | direct/development | core |
 | typescript | 5.9.3 | Apache-2.0 | direct/development | frontend |
 | undici | 7.29.1 | MIT | transitive/development | core |
-| undici-types | 7.18.2 | MIT | transitive/development | core |
+| undici-types | 7.24.6 | MIT | transitive/development | core |
 | universalify | 2.0.1 | MIT | transitive/development | core |
 | unzipper | 0.12.5 | MIT | transitive/development | core |
 | unzipper/node_modules/fs-extra | 11.3.1 | MIT | transitive/development | core |
 | update-browserslist-db | 1.3.3 | MIT | transitive/runtime | frontend |
 | utf8-byte-length | 1.0.5 | (WTFPL OR MIT) | transitive/development | core |
 | util-deprecate | 1.0.2 | MIT | transitive/runtime | core |
-| vite | 7.3.6 | MIT | direct/runtime | frontend |
+| vite | 7.3.7 | MIT | direct/runtime | frontend |
 | webcrypto-core | 1.9.2 | MIT | transitive/development | core |
 | which | 2.0.2 | ISC | transitive/development | core |
 | wrap-ansi | 7.0.0 | MIT | transitive/development | core |

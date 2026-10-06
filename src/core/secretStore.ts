@@ -3,7 +3,7 @@ export interface SecretStore {
   decrypt(value: Buffer | string): string;
 }
 
-/** API keys are deliberately stored as local plaintext. */
+/** Non-production helper for in-memory tests and explicitly gated legacy tooling. */
 export class PlainTextSecretStore implements SecretStore {
   encrypt(value: string): string {
     return value;

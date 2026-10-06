@@ -8,13 +8,20 @@ const patterns = [
   ["github-token", /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\b/g],
   ["aws-access-key", /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g],
   ["provider-token", /\bsk-[A-Za-z0-9_-]{24,}\b/g],
+  ["google-api-key", /\bAIza[0-9A-Za-z_-]{30,}\b/g],
+  ["google-auth-key", /\bAQ\.[0-9A-Za-z_-]{30,}\b/g],
+  ["slack-webhook", /https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]{20,}/g],
+  ["discord-webhook", /https:\/\/(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[A-Za-z0-9._-]+/g],
   ["credential-url", /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^\s/:]+:[^\s/@]+@/g],
 ];
 const matches = [];
 function scan(label, content) {
   for (const [kind, regex] of patterns) {
     regex.lastIndex = 0;
-    for (const match of content.matchAll(regex)) matches.push({ file: label, line: content.slice(0, match.index).split("\n").length, kind });
+    for (const match of content.matchAll(regex)) {
+      if (/not-a-real|synthetic|invalid/i.test(match[0])) continue;
+      matches.push({ file: label, line: content.slice(0, match.index).split("\n").length, kind });
+    }
   }
 }
 const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);

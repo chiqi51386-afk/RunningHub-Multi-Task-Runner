@@ -163,6 +163,8 @@ async function downloadAndInstallUpdate(): Promise<{ started: true }> {
       redirect: "follow",
       signal: AbortSignal.timeout(10 * 60_000),
     });
+    const finalAssetUrl = new URL(response.url || info.assetUrl);
+    if (finalAssetUrl.protocol !== "https:") throw new Error("更新下载被重定向到非 HTTPS 地址，已停止更新。");
     if (!response.ok || !response.body) throw new Error(`下载更新失败：GitHub 返回 HTTP ${response.status}`);
     const expectedBytes = info.assetSize ?? (Number(response.headers.get("content-length")) || 0);
     let receivedBytes = 0;
@@ -198,6 +200,19 @@ async function downloadAndInstallUpdate(): Promise<{ started: true }> {
   [Parameter(Mandatory=$true)][string]$DestinationPath
 )
 $ErrorActionPreference = "Stop"
+$destinationRoot = [IO.Path]::GetFullPath($DestinationPath).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [IO.Compression.ZipFile]::OpenRead($ArchivePath)
+try {
+  foreach ($entry in $zip.Entries) {
+    $entryPath = [IO.Path]::GetFullPath([IO.Path]::Combine($DestinationPath, $entry.FullName))
+    if (-not $entryPath.StartsWith($destinationRoot, [StringComparison]::OrdinalIgnoreCase)) {
+      throw "更新包包含越界路径，已停止解压。"
+    }
+  }
+} finally {
+  $zip.Dispose()
+}
 Expand-Archive -LiteralPath $ArchivePath -DestinationPath $DestinationPath -Force
 `, "utf8");
     try {
