@@ -161,7 +161,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .workflow-group-heading h2 { margin: 0; font-size: 20px; }
 .workflow-group-heading span, .workflow-group-description { color: var(--muted); }
 .workflow-group-description { margin: 0 0 16px; }
-.import-feedback { margin: -8px 0 16px; padding: 11px 13px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
+.import-feedback { margin: 0 0 16px; padding: 11px 13px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; overflow-wrap: anywhere; }
 .import-feedback.success { color: var(--green); border-color: color-mix(in srgb, var(--green) 20%, transparent); background: color-mix(in srgb, var(--green) 6%, transparent); }
 .import-feedback.error { color: var(--red); border-color: color-mix(in srgb, var(--red) 20%, transparent); background: color-mix(in srgb, var(--red) 6%, transparent); }
 .import-feedback svg { flex: 0 0 auto; }
@@ -228,6 +228,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .create-workspace .media-slot-index { display: none; }
 .create-workspace .media-head { padding-right: 0; }
 .create-workspace .submit-bar { flex-wrap: wrap; }
+.create-workspace .submit-bar > *, .create-workspace .section-title-row > *, .content-input-label > * { min-width: 0; max-width: 100%; }
+.create-workspace .section-title-row, .content-input-label, .content-input-label > div { flex-wrap: wrap; }
+.parameter-field { min-width: 0; }
+.modal-head > div, .job-main, .batch-list article > div { min-width: 0; }
+.modal-head h2, .job-title strong, .batch-list strong, .identity strong { overflow-wrap: anywhere; }
+.modal-actions, .settings-actions, .tts-actions, .account-heading-actions { flex-wrap: wrap; }
 .create-workspace .submit-actions { margin-left: auto; flex-wrap: wrap; }
 .create-workspace input, .create-workspace select { min-height: 46px; font-size: 15px; }
 .create-workspace textarea { font-size: 15px; }

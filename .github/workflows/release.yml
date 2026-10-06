@@ -71,7 +71,7 @@ jobs:
           }
           Get-Item -LiteralPath $artifact | Select-Object FullName, Length
 
-      - name: 归档源码与审核报告
+      - name: 归档源码并生成校验文件
         shell: pwsh
         run: |
           node scripts/security-scan.mjs
@@ -90,8 +90,6 @@ jobs:
           path: |
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-source.zip
-            RELEASE_REVIEW_v1.1.0.md
-            SECURITY_AUDIT_v1.1.0.md
             release-build/SHA256SUMS.txt
 
       - name: 生成构建证明
@@ -114,8 +112,6 @@ jobs:
           files: |
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-source.zip
-            RELEASE_REVIEW_v1.1.0.md
-            SECURITY_AUDIT_v1.1.0.md
             release-build/SHA256SUMS.txt
           body_path: RELEASE_NOTES_v1.1.0.md
           name: RunningHub Runner ${{ env.RELEASE_TAG }}

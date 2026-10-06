@@ -1,6 +1,7 @@
 import { AlertTriangle, KeyRound, Link2, LoaderCircle, Plus, RefreshCw, Trash2 } from "lucide-react";
 import type { AccountView } from "../types";
 import { useState } from "react";
+import { Feedback } from "../Feedback";
 import { Select } from "../Select";
 import GeminiSettings from "../modals/GeminiSettings";
 
@@ -16,7 +17,7 @@ export default function Accounts({ accounts, refreshing, onRefresh, onRefreshAll
     </div>
     <div id="runninghub-panel" role="tabpanel" aria-labelledby="runninghub-tab" hidden={platform !== "runninghub"}>
     <PageHeading eyebrow="账号管理" title="账号池" description="按账号实际权益设置最大并发，默认 1；降低并发不会中断正在运行的任务。" action={<div className="account-heading-actions"><button className="secondary" onClick={onCopyApiKeysUrl}><Link2 size={16} />复制 API 密钥页面链接</button><button className="secondary" onClick={onRefreshAll} disabled={Boolean(refreshing)}>{refreshing === "all" ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}检测全部</button><button className="primary" onClick={onAdd}><Plus size={17} />添加账号</button></div>} />
-    {concurrencyError && <p role="alert">{concurrencyError}</p>}
+    <Feedback message={concurrencyError} onClose={()=>setConcurrencyError("")}/>
     <div className="panel table-panel">
       <div className="table-toolbar account-toolbar"><div className="toolbar-note"><AlertTriangle size={16} />API Key 已通过系统加密保存在本机</div></div>
       <div className="data-table account-table">

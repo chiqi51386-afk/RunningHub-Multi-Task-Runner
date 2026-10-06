@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useDebouncedSave } from "./useDebouncedSave";
+import { Feedback } from "./Feedback";
 import { Plus, Trash2, ArrowRight } from "lucide-react";
 import type { CreateJobDraft, WorkflowView, WorkflowParameterView, MediaParameterDraft } from "./types";
 import { MediaField, ParameterField } from "./MediaFields";
@@ -156,36 +157,40 @@ export function MvWorkspace({ workflow, initialDraft, batch, setBatch, editReque
     finally { pickerLock.current = false; setPicking(false); }
   }
   const stagingLock = useRef(false);
-  const stageFeedback = useRef<HTMLDivElement>(null);
-  const [stagedCount,setStagedCount] = useState(0);
+  const taskNameRef = useRef<HTMLInputElement>(null);
+  const [stageNotice, setStageNotice] = useState<{id:string; message:string}>();
   function stage() {
     if (submissionLock.current || pickerLock.current || stagingLock.current) return;
-    stagingLock.current = true; setError(undefined); setStagedCount(0);
+    stagingLock.current = true; setError(undefined); setStageNotice(undefined);
     try {
       const pending = segments;
-      const drafts = prepareMvBatch(pending.map(s => applyMvShared(s.draft, shared, workflow)), workflow);
+      const taskName = taskNameRef.current?.value ?? shared.taskName;
+      const drafts = prepareMvBatch(pending.map(s => applyMvShared(s.draft, { ...shared, taskName }, workflow)), workflow);
+      setShared(current => ({ ...current, taskName }));
       const groupId = crypto.randomUUID();
       const entries = drafts.map((draft, i) => ({ id: crypto.randomUUID(), draft: { ...draft, production: { groupId, segmentIndex: drafts.length === 1 ? draft.production?.segmentIndex ?? 1 : i + 1 } } }));
       if (editingId) {
         const snapshot = drafts[0];
         setBatch(current => current.map(item => item.id === editingId ? { ...item, draft: { ...snapshot, production: item.draft.production } } : item));
         finishEditing();
+        setStageNotice({id:crypto.randomUUID(),message:"批次修改已保存。"});
         return;
       }
       setBatch(current => [...current, ...entries]);
-      setStagedCount(entries.length);
+      setStageNotice({id:crypto.randomUUID(),message:`已加入 ${entries.length} 个任务，请在制作批次中提交。`});
     } catch (e) { setError(e instanceof Error ? e.message : "加入批次失败"); }
-    finally { queueMicrotask(() => { stagingLock.current = false; }); requestAnimationFrame(()=>stageFeedback.current?.scrollIntoView({block:'nearest'})); }
+    finally { queueMicrotask(() => { stagingLock.current = false; }); }
   }
   return <div className="mv-workspace">
-    {(error || storageError) && <div role="alert">{error || storageError}</div>}
+    <Feedback message={error || storageError} onClose={()=>{setError(undefined);setStorageError(undefined);}}/>
+    <Feedback key={stageNotice?.id} message={stageNotice?.message} tone="success" onClose={()=>setStageNotice(undefined)}/>
     <fieldset disabled={busy} className="mv-controls">
       <div className="mv-editor">
       <div className="mv-global-actions bulk-media-actions">
         <button type="button" onClick={clearAllInputs}>清空全部输入</button>
       </div>
       <section className="panel form-panel mv-global">
-        <div className="form-section"><div className="section-content"><label className="parameter-field"><span className="field-label">任务名称（选填）</span><input aria-label="H3数字人任务名称" maxLength={80} value={shared.taskName ?? ""} onChange={e=>changeShared(d=>({...d,taskName:e.target.value}))}/></label></div></div>
+        <div className="form-section"><div className="section-content"><label className="parameter-field"><span className="field-label">任务名称（选填）</span><input ref={taskNameRef} aria-label="H3数字人任务名称" maxLength={80} value={shared.taskName ?? ""} onChange={e=>{const taskName=e.currentTarget.value;changeShared(d=>({...d,taskName}));}}/></label></div></div>
         <div className="form-section"><div className="section-content mv-global-audio">
           <div className="section-title-row"><h2>音频</h2></div>
           <MediaField parameter={audio} index={1} draft={shared.mediaOverrides[audio.id] ?? { enabled: false, mode: "clear" }}
@@ -249,10 +254,6 @@ export function MvWorkspace({ workflow, initialDraft, batch, setBatch, editReque
             })}
           </div>
         </div></div>
-        <div ref={stageFeedback} aria-live="polite">
-          {(error || storageError) && <div className="import-feedback error" role="alert">{error || storageError}</div>}
-          {!error && stagedCount>0 && <p role="status">已加入 {stagedCount} 个任务，请在右侧制作批次提交。</p>}
-        </div>
         <div className="submit-bar">
           <div className="instance-mode-control"><span><strong>Plus 高显存</strong></span><button type="button" aria-label="MV Plus 高显存" className={`switch ${shared.instanceType === "plus" ? "checked" : ""}`} aria-pressed={shared.instanceType === "plus"} onClick={() => { const tier = shared.instanceType === "plus" ? "default" : "plus"; changeShared(d => ({ ...d, instanceType: tier })); }}><span /></button></div>
           <button type="button" className="primary" disabled={!segments.length} onClick={stage}>{editingId ? "保存批次修改" : "加入制作批次"}<ArrowRight size={18} /></button>

@@ -4,7 +4,7 @@ import { TTS_LANGUAGES, TTS_MODEL, TTS_VOICES, type TtsInput } from "./ttsTypes.
 export function validateTtsInput(input: TtsInput): void {
   if (!input || typeof input.text !== "string" || !input.text.trim() || input.text.length > 12000) throw new GeminiError("请填写配音文本，最多 12000 字。", "config");
   if (!TTS_VOICES.some(v=>v[0]===input.voice) || !TTS_LANGUAGES.some(v=>v.id===input.language)) throw new GeminiError("请选择有效的语言和音色。", "config");
-  if (typeof input.style !== "string" || input.style.length>1500) throw new GeminiError("情感与语气最多 1500 字。", "config");
+  if (typeof input.style !== "string" || input.style.length>1500) throw new GeminiError("风格指令最多 1500 字。", "config");
 }
 
 export function ttsRequest(input: TtsInput) {

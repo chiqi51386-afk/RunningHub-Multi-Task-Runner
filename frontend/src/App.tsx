@@ -2,6 +2,7 @@ import { AlertTriangle, Boxes, Check, Gauge, LayoutDashboard, ListTodo, LoaderCi
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { CreateJob } from "./CreateTask";
+import { Feedback, Notice } from "./Feedback";
 import { activeJobStatuses, defaultUiPreferences, localizedFailureReason, playNotificationSound, type UiPreferences } from "./app-shared";
 import { hasDesktopBridge } from "./bridge";
 import { regenerateDraft } from "./regenerate-draft";
@@ -314,10 +315,10 @@ function App() {
         </header>
 
         <div className={`page ${view === "overview" ? "overview-page" : ""}`}>
-          {appError && <div className="import-feedback error"><AlertTriangle size={17} /><span>{appError}</span><button className="icon-button" onClick={() => setAppError(undefined)}><X size={15} /></button></div>}
+          <Feedback message={appError} onClose={()=>setAppError(undefined)}/>
           {view === "overview" && <Overview stats={stats} accounts={accounts} jobs={jobs} onView={setView} />}
           {view === "accounts" && <Accounts accounts={accounts} refreshing={refreshing} onRefresh={refreshAccount} onRefreshAll={refreshAllAccounts} onAdd={() => setAddAccountOpen(true)} onCopyApiKeysUrl={() => { const url = "https://www.runninghub.ai/zh-cn/call-api/bill-task?tab=keys&type=consumer"; void (window.runningHub ? window.runningHub.external.copyApiKeysUrl() : navigator.clipboard.writeText(url)).then(() => setCopyNotice("API 密钥页面链接已复制")).catch(error => setAppError(error instanceof Error ? error.message : "复制失败，请重试")); }} onRekey={setRekeyAccount} onToggle={id => { const account = accounts.find(item => item.id === id); if (!account) return; if (window.runningHub) void window.runningHub.accounts.setEnabled(id, !account.enabled).then(updated => setAccounts(list => list.map(item => item.id === id ? updated : item))).catch(error => setAppError(error instanceof Error ? error.message : "账号状态更新失败")); else setAccounts(list => list.map(a => a.id === id ? { ...a, enabled: !a.enabled, state: a.enabled ? "DISABLED" : "IDLE" } : a)); }} onRemove={async id => { const account = accounts.find(item => item.id === id); if (!account || !await confirm(`删除账号“${account.label}”？已保存的 API Key 将一并删除。`)) return; if (window.runningHub) void window.runningHub.accounts.remove(id).then(() => setAccounts(list => list.filter(item => item.id !== id))).catch(error => setAppError(error instanceof Error ? error.message : "账号删除失败")); else setAccounts(list => list.filter(item => item.id !== id)); }} />}
-          <Suspense fallback={<div className="operation-toast" role="status">正在加载…</div>}>{view === "workflows" && <Workflows workflows={workflows} onImport={workflow => setWorkflows(current => [workflow, ...current.filter(item => item.id !== workflow.id)])} onUpdate={workflow => setWorkflows(current => current.map(item => item.id === workflow.id ? workflow : item))} onDelete={async workflowId => { if (window.runningHub) await window.runningHub.workflows.remove(workflowId); setWorkflows(current => current.filter(item => item.id !== workflowId)); if (createWorkflowId === workflowId) setCreateWorkflowId(workflows.find(item => item.id !== workflowId)?.id ?? ""); }} onUse={workflowId => openFreshCreate(workflowId)} />}</Suspense>
+          <Suspense fallback={<Notice><div className="operation-toast" role="status">正在加载…</div></Notice>}>{view === "workflows" && <Workflows workflows={workflows} onImport={workflow => setWorkflows(current => [workflow, ...current.filter(item => item.id !== workflow.id)])} onUpdate={workflow => setWorkflows(current => current.map(item => item.id === workflow.id ? workflow : item))} onDelete={async workflowId => { if (window.runningHub) await window.runningHub.workflows.remove(workflowId); setWorkflows(current => current.filter(item => item.id !== workflowId)); if (createWorkflowId === workflowId) setCreateWorkflowId(workflows.find(item => item.id !== workflowId)?.id ?? ""); }} onUse={workflowId => openFreshCreate(workflowId)} />}</Suspense>
           <div hidden={view !== "create"}><CreateJob active={view === "create"} requestRevision={createRevision} workflows={workflows} initialWorkflowId={createWorkflowId} initialDraft={createDraftOverride} onCreate={createJobs} /></div>
           {view === "jobs" && <Jobs jobs={jobs} onReveal={revealFile} cancelling={cancelling} onCancel={async id => {
             if (cancelLocks.current.has(id)) return;
@@ -335,14 +336,14 @@ function App() {
         </div>
       </main>
       {mobileNav && <button className="scrim" onClick={() => setMobileNav(false)} aria-label="关闭导航" />}
-      <Suspense fallback={<div className="operation-toast" role="status">正在加载…</div>}>{addAccountOpen && <AddAccountModal onClose={() => setAddAccountOpen(false)} onAdd={addAccounts} />}</Suspense>
-      <Suspense fallback={<div className="operation-toast" role="status">正在加载…</div>}>{rekeyAccount && <ReplaceAccountKeyModal account={rekeyAccount} onClose={() => setRekeyAccount(undefined)} onSave={replaceAccountKey} />}</Suspense>
+      <Suspense fallback={<Notice><div className="operation-toast" role="status">正在加载…</div></Notice>}>{addAccountOpen && <AddAccountModal onClose={() => setAddAccountOpen(false)} onAdd={addAccounts} />}</Suspense>
+      <Suspense fallback={<Notice><div className="operation-toast" role="status">正在加载…</div></Notice>}>{rekeyAccount && <ReplaceAccountKeyModal account={rekeyAccount} onClose={() => setRekeyAccount(undefined)} onSave={replaceAccountKey} />}</Suspense>
       {confirmationDialog}
-      {copyNotice && <div className="operation-toast" role="status">{copyNotice}</div>}
-      {cancelling.size > 0 && <div className="operation-toast" role="status"><LoaderCircle className="spin" size={17} />正在取消 {cancelling.size} 个任务，请稍候…</div>}
-      <Suspense fallback={<div className="operation-toast" role="status">正在加载…</div>}>{settingsOpen && <SettingsModal preferences={uiPreferences} onPreferencesChange={setUiPreferences} onClose={() => setSettingsOpen(false)} />}</Suspense>
-      <Suspense fallback={<div className="operation-toast" role="status">正在加载…</div>}>{noticePreviewJobId && jobs.find(job => job.id === noticePreviewJobId) && <TaskPreviewModal job={jobs.find(job => job.id === noticePreviewJobId)!} onReveal={revealFile} onClose={() => setNoticePreviewJobId(undefined)} />}</Suspense>
-      {taskNotice && <div className={`task-toast ${taskNotice.tone}`} role="status"><div className="task-toast-icon">{taskNotice.tone === "success" ? <Check size={16} /> : <AlertTriangle size={16} />}</div><span><strong>{taskNotice.title}</strong><small>{taskNotice.message}</small></span>{taskNotice.tone === "success" && <button className="task-toast-preview" type="button" onClick={() => { dismissNotice(); setNoticePreviewJobId(taskNotice.jobId); }}>预览</button>}<button className="task-toast-close" type="button" onClick={() => dismissNotice()} aria-label="关闭提示"><X size={14} /></button></div>}
+      <Feedback message={copyNotice} tone="success" onClose={()=>setCopyNotice(undefined)}/>
+      {cancelling.size > 0 && <Notice><div className="operation-toast" role="status"><LoaderCircle className="spin" size={17} />正在取消 {cancelling.size} 个任务，请稍候…</div></Notice>}
+      <Suspense fallback={<Notice><div className="operation-toast" role="status">正在加载…</div></Notice>}>{settingsOpen && <SettingsModal preferences={uiPreferences} onPreferencesChange={setUiPreferences} onClose={() => setSettingsOpen(false)} />}</Suspense>
+      <Suspense fallback={<Notice><div className="operation-toast" role="status">正在加载…</div></Notice>}>{noticePreviewJobId && jobs.find(job => job.id === noticePreviewJobId) && <TaskPreviewModal job={jobs.find(job => job.id === noticePreviewJobId)!} onReveal={revealFile} onClose={() => setNoticePreviewJobId(undefined)} />}</Suspense>
+      {taskNotice && <Notice><div className={`task-toast ${taskNotice.tone}`} role="status"><div className="task-toast-icon">{taskNotice.tone === "success" ? <Check size={16} /> : <AlertTriangle size={16} />}</div><span><strong>{taskNotice.title}</strong><small>{taskNotice.message}</small></span>{taskNotice.tone === "success" && <button className="task-toast-preview" type="button" onClick={() => { dismissNotice(); setNoticePreviewJobId(taskNotice.jobId); }}>预览</button>}<button className="task-toast-close" type="button" onClick={() => dismissNotice()} aria-label="关闭提示"><X size={14} /></button></div></Notice>}
     </div>
   );
 }

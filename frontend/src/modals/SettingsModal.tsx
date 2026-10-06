@@ -2,6 +2,7 @@ import { AlertTriangle, ChevronDown, Download, ExternalLink, FolderOpen, LoaderC
 import { useEffect, useState } from "react";
 import type { UpdateInfo, UpdateProgress } from "../bridge";
 import { Select } from "../Select";
+import { Feedback } from "../Feedback";
 import { themes } from "../themes";
 
 import { playNotificationSound, type UiPreferences } from "../app-shared";
@@ -87,7 +88,7 @@ export default function SettingsModal({ preferences, onPreferencesChange, onClos
       <div className="settings-actions"><button type="button" className="secondary" disabled={!window.runningHub || checkingUpdate || installingUpdate} onClick={() => void checkUpdate()}>{checkingUpdate ? "正在检查…" : "检查更新"}</button>{updateInfo?.updateAvailable && <button type="button" className="primary" disabled={installingUpdate} onClick={() => void installUpdate()}>{installingUpdate ? <><LoaderCircle className="spin" size={14} />正在更新…</> : <><Download size={14} />立即更新并重启</>}</button>}<button type="button" className="ghost" disabled={installingUpdate} onClick={() => void openSettingsLink(window.runningHub?.updates.openRepository)}>项目主页</button></div>
       <div className="update-data-note"><ShieldCheck size={16} /><span>更新包会从官方 GitHub Release 下载并校验 SHA-256，随后自动替换程序文件并重启。API Key、工作流、任务和设置保存在独立数据库中，不会被更新器删除。</span></div>
     </section>
-    {error && <div className="import-feedback error modal-feedback"><AlertTriangle size={16} /><span>{error}</span>{updateInfo?.updateAvailable && <button type="button" className="ghost small" onClick={() => void openSettingsLink(window.runningHub?.updates.openLatestRelease)}><ExternalLink size={13} />手动下载</button>}</div>}
+    <Feedback message={error} onClose={()=>setError(undefined)}>{updateInfo?.updateAvailable && <button type="button" className="ghost small" onClick={() => void openSettingsLink(window.runningHub?.updates.openLatestRelease)}><ExternalLink size={13} />手动下载</button>}</Feedback>
     </div>
     <div className="modal-actions"><button type="button" className="primary" disabled={installingUpdate} onClick={onClose}>完成</button></div>
   </div></div>;

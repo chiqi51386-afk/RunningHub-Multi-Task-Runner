@@ -1,5 +1,6 @@
 import {useEffect,useState} from 'react';
 import {X,Upload} from 'lucide-react';
+import { Feedback } from "../Feedback";
 import {Select} from '../Select';
 import type {WorkflowView} from '../types';
 import type {WorkflowSkillSettings} from '../../../src/core/gemini/workflowSkills';
@@ -21,7 +22,7 @@ export default function WorkflowSkillModal({workflow,onClose}:{workflow:Workflow
     <div className="settings-actions"><button className="secondary" disabled={busy||!bridge} onClick={()=>void change(()=>bridge!.import(workflow.id))}><Upload size={16}/>{busy?'正在保存…':'上传自定义 Skill'}</button></div>
     <p>支持 UTF-8 的 .md / .txt 文件（最大 256 KB）。自定义内容替换内置 Skill；软件仍会附上生成词、素材、时长和画面比例，不执行文件里的代码。</p>
     {selected&&<details><summary>查看已加载内容 · {selected.name}</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',maxHeight:320,overflow:'auto'}}>{selected.content}</pre></details>}
-    {error&&<p role="alert">{error}</p>}
+    <Feedback message={error} onClose={()=>setError("")}/>
     <div className="modal-actions"><button className="secondary" onClick={onClose}>关闭</button></div>
   </div></div>;
 }

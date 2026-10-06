@@ -7,7 +7,6 @@ contextBridge.exposeInMainWorld("runningHub", {
     import: id => ipcRenderer.invoke('skills:import',id),
   },
   tts: {
-    optimize: (id, input) => ipcRenderer.invoke("tts:optimize", id, input),
     generate: (id, input, preview) => ipcRenderer.invoke("tts:generate", id, input, preview),
     cancel: id => ipcRenderer.invoke("tts:cancel", id),
     save: localPath => ipcRenderer.invoke("tts:save", localPath),

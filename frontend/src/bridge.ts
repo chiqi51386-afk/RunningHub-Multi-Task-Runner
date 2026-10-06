@@ -28,7 +28,6 @@ export interface RunningHubRendererBridge {
     import(workflowId:string):Promise<import('../../src/core/gemini/workflowSkills.js').WorkflowSkillSettings|undefined>;
   };
   tts: {
-    optimize(id:string,input:{text:string;language:string}):Promise<string>;
     generate(id:string,input:TtsInput,preview:boolean):Promise<TtsAudio>;
     cancel(id:string):Promise<void>;
     save(localPath:string):Promise<boolean>;

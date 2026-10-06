@@ -20,14 +20,14 @@ globalThis.setInterval = ((...args: Parameters<typeof setInterval>) => {
 globalThis.clearInterval = ((id: ReturnType<typeof setInterval>) => { intervals.delete(id); originalClear(id); }) as typeof clearInterval;
 const calls: string[] = [];
 const job = (index: number): JobView => ({
-  id: `test-${index}`, workflowName: `任务 ${index}`, status: index < 10 ? "RUNNING" : "COMPLETED",
+  id: `test-${index}`, taskName: `任务 ${index}`, workflowName: "测试工作流", status: index < 10 ? "RUNNING" : "COMPLETED",
   createdAt: 2000000 - index, remoteTaskId: `remote-${index}`, generationStartedAt: Date.now() - 5000,
   generationCompletedAt: index < 10 ? undefined : Date.now(), outputType: "MP4",
   inputs: { workflowId: "test", profileVersion: 1, media: [], parameters: [] },
 } as JobView);
 let jobs = Array.from({ length: 1000 }, (_, i) => job(i));
 let firstRowReads = 0;
-Object.defineProperty(jobs[0], "workflowName", { enumerable: true, get() { firstRowReads++; return "任务 0"; } });
+Object.defineProperty(jobs[0], "instanceType", { enumerable: true, get() { firstRowReads++; return "plus"; } });
 const renderJobs = async (suffix = "") => {
   await act(async () => root.render(<Jobs jobs={jobs} cancelling={new Set()} onCancel={id => calls.push(`cancel:${id}${suffix}`)}
     onRegenerate={item => calls.push(`regenerate:${item.id}${suffix}`)} onDelete={id => calls.push(`delete:${id}${suffix}`)} onReveal={() => {}} />));

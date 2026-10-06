@@ -69,7 +69,17 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .danger-button:disabled { opacity: .65; cursor: wait; }
 .confirm-dialog { max-width: 480px; }
 .confirm-dialog p { margin: 0; padding: 0 22px 22px; line-height: 1.65; color: var(--text); }
-.operation-toast { position: fixed; top: 76px; left: 50%; transform: translateX(-50%); z-index: 125; display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 12px 18px; pointer-events: none; box-shadow: 0 8px 24px #0004; }
+.operation-toast { display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 12px 18px; box-shadow: 0 8px 24px #0004; }
+.notification-stack { position: fixed; top: 76px; right: 16px; z-index: 1500; width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 100px); display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overscroll-behavior: contain; pointer-events: none; }
+.notification-stack:empty { display: none; }
+.notification-stack > * { flex-shrink: 0; pointer-events: auto; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.notification-stack .task-toast { position: static; width: 100%; }
+.feedback-toast { display: grid; grid-template-columns: 18px minmax(0, 1fr) 28px; align-items: start; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--text); box-shadow: 0 8px 24px #0004; font-size: 13px; line-height: 1.5; }
+.feedback-toast > svg { margin-top: 3px; color: var(--blue); }
+.feedback-toast.success > svg { color: var(--green); }
+.feedback-toast.error > svg { color: var(--red); }
+.feedback-toast .icon-button { width: 28px; height: 28px; }
+.feedback-message { min-width: 0; white-space: pre-wrap; }
 .theme-presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .theme-card { display: grid; gap: 12px; text-align: left; border: 1px solid var(--line-soft); border-radius: 8px; padding: 14px; cursor: pointer; min-height: 92px; }
 .theme-card.selected { outline: 2px solid var(--blue); outline-offset: 2px; }
@@ -124,6 +134,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 .tts-workspace button.primary-button { border-color: var(--action); }
 .tts-workspace button.secondary-button { background: transparent; color: var(--text); }
 .tts-workspace button:disabled { opacity: .55; cursor: default; }
-.tts-text-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tts-text-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.tts-text-heading .field-label { margin: 0; }
+.tts-text-heading button { flex-shrink: 0; }
 .tts-voice-description { margin: -8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
 @media(max-width:700px) { .tts-options { grid-template-columns: 1fr; } .tts-workspace { padding: 16px; } }

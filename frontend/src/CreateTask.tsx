@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { useDebouncedSave } from "./useDebouncedSave";
+import { Feedback } from "./Feedback";
 import type { WorkflowView, WorkflowParameterView, CreateJobDraft } from "./types";
 import { MvWorkspace } from "./MvWorkspace";
 import { isSavedDraft, readSaved, serializeDraft, restoreDraft } from "./draft-storage";
@@ -106,7 +107,7 @@ export const CreateJob = memo(function CreateJob(props: CreateJobProps) {
     }
   }, [props.requestRevision, props.initialDraft, props.initialWorkflowId, props.workflows, editItem, switchMode]);
   return <div className="create-workspace" ref={workspaceRef}>
-    {(storageError || batchError) && <div role="alert">{storageError || batchError}</div>}
+    <Feedback message={storageError} onClose={()=>setStorageError(undefined)}/>
     <div className="create-layout">
     <div className="create-editor-column">
     <div className="create-mode-navigation">
@@ -169,6 +170,7 @@ const CreateWorkspace = memo(function CreateWorkspace({ workflows, initialWorkfl
   }, [draft, activeMode]);
   const [formError, setFormError] = useState<string>();
   const formRef = useRef<HTMLFormElement>(null);
+  const taskNameRef = useRef<HTMLInputElement>(null);
   const mediaEpoch = useRef(0);
   const mediaRequests = useRef(new Map<string, number>());
   const appliedRequest = useRef(requestRevision);
@@ -310,7 +312,9 @@ const CreateWorkspace = memo(function CreateWorkspace({ workflows, initialWorkfl
     if (!selected || !formRef.current?.reportValidity()) return;
     const issue = media.find(parameter => parameter.mappingIssue);
     if (issue) { setFormError(issue.mappingIssue); return; }
-    const snapshot = prepareDraft(draft, selected, activeMode);
+    const taskName = taskNameRef.current?.value ?? draft.taskName;
+    const snapshot = prepareDraft({ ...draft, taskName }, selected, activeMode);
+    setDraft(current => ({ ...current, taskName }));
     if (editingBatchId) {
       setBatch(current => current.map(item => item.id === editingBatchId ? { ...item, draft: snapshot } : item));
       setEditingBatchId(undefined);
@@ -330,7 +334,8 @@ const CreateWorkspace = memo(function CreateWorkspace({ workflows, initialWorkfl
         try {
         const workflow = workflows.find(workflow => workflow.id === item.workflowId);
         if (!workflow) throw new Error("工作流已删除，请重新选择工作流。");
-        return prepareDraft(item, workflow, createModeForWorkflow(workflow));
+        const taskName = taskNameRef.current?.value ?? item.taskName;
+        return prepareDraft({ ...item, taskName }, workflow, createModeForWorkflow(workflow));
         } catch (error) {
           throw new Error(`第 ${index + 1} 项校验失败，尚未提交：${error instanceof Error ? error.message : "输入不完整"}`);
         }
@@ -348,16 +353,16 @@ const CreateWorkspace = memo(function CreateWorkspace({ workflows, initialWorkfl
   }
 
   return <>
-    {storageError && <div role="alert">{storageError}</div>}
+    <Feedback message={storageError} onClose={()=>setStorageError(undefined)}/>
     <div className="create-editor-form">
       <form ref={formRef} className="panel form-panel" onSubmit={e => { e.preventDefault(); }}>
         {activeMode === "personal" && <div className="form-section"><div className="section-content"><label className="parameter-field"><span className="field-label">个人工作流</span><Select value={selected?.id ?? ""} onChange={event => chooseWorkflow(event.target.value)}><option value="" disabled>请选择工作流</option>{modeWorkflows.map(workflow => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}</Select></label>{!modeWorkflows.length && <p>请先在“工作流”页面导入个人工作流，再到这里创建任务。</p>}</div></div>}
-        <div className="form-section"><div className="section-content"><label className="parameter-field"><span className="field-label">任务名称（选填）</span><input aria-label="任务名称" maxLength={80} value={draft.taskName ?? ""} onChange={e=>setDraft(current=>({...current,taskName:e.target.value}))}/></label></div></div>
+        <div className="form-section"><div className="section-content"><label className="parameter-field"><span className="field-label">任务名称（选填）</span><input ref={taskNameRef} aria-label="任务名称" maxLength={80} value={draft.taskName ?? ""} onChange={e=>{const taskName=e.currentTarget.value;setDraft(current=>({...current,taskName}));}}/></label></div></div>
         {!selected && <div className="empty-parameters">当前模块工作流未加载，请重启桌面端。</div>}
         {(prompts.length > 0 || media.length > 0) && <div className="form-section"><div className="section-content"><div className="section-title-row media-section-title"><div><h2>媒体输入</h2></div>{media.length > 0 && <div className="bulk-media-actions"><button type="button" onClick={clearAllMedia}>清空全部输入</button></div>}</div>{prompts.length > 0 && <div className="content-prompt-block"><div className="content-input-label"><span>生成词</span><div>{(h3Images || promptOptimization) && <label className="boolean-field"><span><strong>中文生成词优化</strong></span><button type="button" className={`switch ${taskOptimizationEnabled(draft) ? "checked" : ""}`} aria-label="中文生成词优化" aria-pressed={taskOptimizationEnabled(draft)} onClick={()=>setDraft(current=>({...current,promptOptimizationEnabled:!taskOptimizationEnabled(current)}))}><span /></button></label>}<button type="button" onClick={clearPrompts}>清空生成词</button></div></div><div className={`dynamic-grid prompt-input-grid ${h3Images ? "h3-prompt-input" : ""}`}>{prompts.map(parameter => <ParameterField hideLabel={prompts.length === 1} key={parameter.id} parameter={parameter} value={draft.parameterValues[parameter.id]} onValue={setValue} />)}</div></div>}{negativePrompts.length > 0 && <div className="negative-prompt-section">{negativePrompts.map(parameter => <ParameterField key={parameter.id} parameter={parameter} value={draft.parameterValues[parameter.id]} onValue={setValue}/>)}</div>}{media.length > 0 && <div className={h3Images ? "mv-media" : "media-stack"}>{media.map((parameter, index) => { if (activeMode === "h3-multi-reference" && index >= expandedImageSlotCount(media, draft)) return null; const mediaDraft = draft.mediaOverrides[parameter.id] ?? { enabled: false, mode: "clear" as const }; return <MediaField numberedImage={activeMode === "h3-multi-reference"} key={parameter.id} index={parameter.referenceIndex !== undefined ? parameter.referenceIndex + 1 : media.slice(0, index + 1).filter(item => item.valueType === parameter.valueType).length} parameter={parameter} draft={mediaDraft} onPick={window.runningHub ? () => void receiveMedia(parameter) : undefined} onDrop={file => receiveMedia(parameter, file)} onMove={sourceId => moveImageMedia(sourceId, parameter)} onChange={(mode, file) => setMedia(parameter, mode, file)} />; })}</div>}</div></div>}
         {h3Images && generationParameters.length > 0 && <div className="form-section"><div className="section-content"><h2>生成参数</h2>{generationParameters.length > 0 ? <div className="dynamic-grid">{generationParameters.map(parameter => <ParameterField key={parameter.id} parameter={parameter} value={draft.parameterValues[parameter.id]} onValue={setValue} />)}</div> : <div className="empty-parameters">这个工作流没有其他生成参数。</div>}</div></div>}
         {activeMode === "personal" && <div className="form-section"><div className="section-content"><h2>生成参数</h2><div className="dynamic-grid">{visibleParameters.filter(parameter => !isMediaParameter(parameter) && parameter.semanticType !== "prompt" && parameter.semanticType !== "negative_prompt").map(parameter => <ParameterField key={parameter.id} parameter={parameter} value={draft.parameterValues[parameter.id]} onValue={setValue}/>)}</div></div></div>}
-        {formError && <div className="import-feedback error" role="alert">{formError}</div>}<div className="submit-bar"><div className="instance-mode-control"><span><strong>Plus 高显存</strong></span><button type="button" className={`switch ${draft.instanceType === "plus" ? "checked" : ""}`} onClick={() => setDraft(current => ({ ...current, instanceType: current.instanceType === "plus" ? "default" : "plus" }))} aria-label="开启 Plus 高显存实例" aria-pressed={draft.instanceType === "plus"}><span /></button></div><div className="submit-actions"><button className="secondary" type="button" onClick={saveDraftToBatch} disabled={!selected || !!submitting}>{editingBatchId ? "保存批次修改" : "加入制作批次"}</button><button className="primary submit" type="button" onClick={() => void submitDrafts([draft], "single")} disabled={!selected || !!submitting}>{submitting === "single" ? "正在提交当前任务…" : "提交当前任务"}</button></div></div>
+        <Feedback message={formError} onClose={()=>setFormError(undefined)}/><div className="submit-bar"><div className="instance-mode-control"><span><strong>Plus 高显存</strong></span><button type="button" className={`switch ${draft.instanceType === "plus" ? "checked" : ""}`} onClick={() => setDraft(current => ({ ...current, instanceType: current.instanceType === "plus" ? "default" : "plus" }))} aria-label="开启 Plus 高显存实例" aria-pressed={draft.instanceType === "plus"}><span /></button></div><div className="submit-actions"><button className="secondary" type="button" onClick={saveDraftToBatch} disabled={!selected || !!submitting}>{editingBatchId ? "保存批次修改" : "加入制作批次"}</button><button className="primary submit" type="button" onClick={() => void submitDrafts([draft], "single")} disabled={!selected || !!submitting}>{submitting === "single" ? "正在提交当前任务…" : "提交当前任务"}</button></div></div>
       </form>
     </div>
   </>;

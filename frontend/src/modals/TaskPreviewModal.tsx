@@ -1,5 +1,6 @@
 import { AlertTriangle, FileJson, FolderOpen, LoaderCircle, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Feedback } from "../Feedback";
 import { MediaPreview } from "../MediaFields";
 import type { JobOutputView, JobView } from "../types";
 
@@ -27,7 +28,7 @@ export default function TaskPreviewModal({ job, onClose, onReveal }: { job: JobV
 
 function CopyablePrompt({label,text,empty="未填写"}:{label:string;text?:string;empty?:string}) {
   const [feedback,setFeedback]=useState('');
-  return <section className="preview-prompt"><div className="section-title-row"><h3>{label}</h3><button className="secondary small" disabled={!text} onClick={async()=>{try{await navigator.clipboard.writeText(text!);setFeedback('已复制');}catch{setFeedback('复制失败，请手动选择文本');}}}>复制</button></div><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',maxHeight:260,overflow:'auto'}}>{text || empty}</pre>{feedback&&<span role="status">{feedback}</span>}</section>;
+  return <section className="preview-prompt"><div className="section-title-row"><h3>{label}</h3><button className="secondary small" disabled={!text} onClick={async()=>{try{await navigator.clipboard.writeText(text!);setFeedback('已复制');}catch{setFeedback('复制失败，请手动选择文本');}}}>复制</button></div><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',maxHeight:260,overflow:'auto'}}>{text || empty}</pre><Feedback message={feedback} tone={feedback==="已复制"?"success":"error"} onClose={()=>setFeedback("")}/></section>;
 }
 
 function OutputPlayer({ output }: { output: JobOutputView }) {

@@ -1,5 +1,6 @@
 import { Copy, LoaderCircle, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Feedback, Notice } from "../Feedback";
 import { Select } from "../Select";
 import { DEFAULT_GEMINI_MODEL, type GeminiKeyView, type GeminiSettings as Settings } from "../../../src/core/gemini/types";
 
@@ -77,7 +78,7 @@ export default function GeminiSettings() {
     <div className="settings-actions"><button type="button" className="secondary" disabled={!!busy||!bridge||modelChanged||!settings.keys.length} onClick={()=>void perform("all",testAll)}><RefreshCw size={14}/>{busy==="all"?"正在检测全部…":"检测全部账号"}</button></div>
     <p>按顺序轮询启用的 Key；临时错误冷却后恢复参与。相同 Google 项目的 Key 共用额度。检测会发送一条简短请求。</p>
     {!bridge&&<p>请在更新后的桌面测试版中配置。</p>}
-    {busy&&<div role="status" className="gemini-feedback"><LoaderCircle className="spin" size={15}/>正在处理…</div>}
-    {message&&<div role={error?"alert":"status"} className={`gemini-feedback ${error?"error":""}`}>{message}</div>}
+    {busy&&<Notice><div role="status" className="operation-toast"><LoaderCircle className="spin" size={15}/>正在处理…</div></Notice>}
+    <Feedback message={message} tone={error?"error":"success"} onClose={()=>setMessage("")}/>
   </section>;
 }

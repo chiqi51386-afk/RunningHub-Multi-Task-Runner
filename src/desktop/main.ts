@@ -23,7 +23,6 @@ import {WorkflowSkillStore} from "../core/gemini/workflowSkills.js";
 import { selectOptimization } from "../core/gemini/selection.js";
 import { optimizeH3 } from "../core/gemini/h3Optimizer.js";
 import { TTS_LANGUAGES, type TtsInput } from "../core/gemini/ttsTypes.js";
-import { optimizeTtsTranscript } from "../core/gemini/ttsOptimize.js";
 import type { Account, CreateJobInput, InstanceType, Job, WorkflowProfile, WorkflowRecord } from "../core/types.js";
 import { latestReleaseApiUrls, latestReleaseUrl, parseLatestRelease, trustedUpdateAssetPrefixes, updateRepositoryUrl } from "./updates.js";
 import type { UpdateInfo, UpdateProgress } from "./updates.js";
@@ -512,12 +511,6 @@ function registerHandlers(): void {
     }finally{ttsRequests.delete(id);}
   });
   ipcMain.handle("tts:cancel", (_event, id:string) => {ttsRequests.get(id)?.abort();});
-  ipcMain.handle("tts:optimize", async (_event,id:string,input:{text:string;language:string})=>{
-    if(typeof id!=="string"||!/^[a-zA-Z0-9-]{1,80}$/.test(id)||ttsRequests.has(id)||ttsRequests.size>=2)throw new Error("请求正在处理，请稍后再试。");
-    const controller=new AbortController();ttsRequests.set(id,controller);
-    try{return await optimizeTtsTranscript(gemini,structuredClone(input),controller.signal);}
-    finally{ttsRequests.delete(id);}
-  });
   ipcMain.handle("tts:save", async (_event, localPath:string) => {
     const directory=await realpath(path.join(app.getPath("userData"),"tts-audio"));
     if(typeof localPath!=="string")throw new Error("音频路径无效。");
@@ -993,7 +986,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       if (!plus.closest('.instance-mode-control') || (standardPlus && (getComputedStyle(plus).height !== getComputedStyle(standardPlus).height || getComputedStyle(plus).width !== getComputedStyle(standardPlus).width))) throw new Error('MV Plus differs from standard control');
       const stage = [...root.querySelectorAll('button')].find(b => b.textContent === '加入制作批次');
       stage.click(); await wait();
-      if (!root.querySelector('[role="alert"]')?.textContent.includes('未填写生成词') || document.querySelectorAll('.batch-list article').length) return false;
+      if (![...document.querySelectorAll('#app-notifications [role="alert"]')].some(e => e.textContent.includes('未填写生成词')) || document.querySelectorAll('.batch-list article').length) return false;
       if (!document.querySelector('.batch-submit').disabled) return false;
       const segments = root.querySelectorAll('.mv-segment');
       if ([...segments].some(s => s.querySelectorAll('textarea').length !== 1)) return false;
@@ -1114,11 +1107,6 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
     ttsWav.writeUInt16LE(2,32);ttsWav.writeUInt16LE(16,34);ttsWav.write('data',36);ttsWav.writeUInt32LE(4800,40);
     gemini.store.add(['AIza-tts-smoke-key-123456789']);
     gemini=new GeminiPool(gemini.store,{fetch:async(_url,options)=>{
-      const body=JSON.parse(String(options?.body));
-      if(body.model==='gemini-3.5-flash-lite'){
-        const transcript=JSON.parse(body.input[0].text).transcript;
-        return Response.json({status:'completed',steps:[{type:'model_output',content:[{type:'text',text:transcript+'!'}]}]});
-      }
       return Response.json({status:'completed',steps:[{type:'model_output',content:[{type:'audio',mime_type:'audio/wav',data:ttsWav.toString('base64')}]}]});
     }});
     await window.webContents.executeJavaScript(`(async()=>{
@@ -1148,10 +1136,16 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(text,'Xin chào');
       text.dispatchEvent(new Event('input',{bubbles:true}));
       await new Promise(r=>setTimeout(r,100));
-      [...root.querySelectorAll('button')].find(b=>b.textContent==='自动优化').click();
-      for(let i=0;i<50&&text.value!=='Xin chào!';i++)await new Promise(r=>setTimeout(r,100));
-      if(text.value!=='Xin chào!')throw Error('TTS optimization did not replace transcript');
-      if(button.disabled)throw Error('TTS optimization remained busy');
+      const style=root.querySelector('textarea[aria-label="风格指令"]');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(style,'温柔');
+      style.dispatchEvent(new Event('input',{bubbles:true}));
+      await new Promise(r=>setTimeout(r,100));
+      [...root.querySelectorAll('button')].find(b=>b.textContent==='清空文本').click();
+      await new Promise(r=>setTimeout(r,100));
+      if(text.value||style.value||!button.disabled||window.runningHub.tts.optimize)throw Error('TTS clear/removal failed');
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(text,'Xin chào');
+      text.dispatchEvent(new Event('input',{bubbles:true}));
+      await new Promise(r=>setTimeout(r,100));
       button.click();
       for(let i=0;i<50&&!root.querySelector('.tts-result');i++)await new Promise(r=>setTimeout(r,100));
       const audio=root.querySelector('.tts-result audio');
@@ -1221,7 +1215,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
     await window.webContents.executeJavaScript(`(async()=>{
       [...document.querySelectorAll('.nav-list button')].find(b=>b.textContent==='任务队列').click();
       await new Promise(r=>setTimeout(r,450));
-      const button=[...document.querySelectorAll('.job-actions button')].find(b=>b.textContent.includes('提交参数预览'));
+      const button=[...document.querySelectorAll('.job-actions button')].find(b=>b.textContent.trim()==='预览');
       if(!document.querySelector('.job-title')?.textContent.includes('预览命名测试'))throw Error('Task title not connected');
       if(!button)throw Error('Active task preview unavailable');button.click();await new Promise(r=>setTimeout(r,450));
       const modal=document.querySelector('[aria-label="任务预览"]');

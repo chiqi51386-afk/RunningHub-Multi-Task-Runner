@@ -1,5 +1,6 @@
 import { ArrowRight, Check, CloudUpload, Download, Link2, LoaderCircle, Pencil, Play, Settings2, Trash2, Workflow } from "lucide-react";
 import { Suspense, lazy, useRef, useState } from "react";
+import { Feedback, Notice } from "../Feedback";
 import { isMediaParameter } from "../task-draft";
 import type { WorkflowView } from "../types";
 import { importSummary } from "../workflow-summary";
@@ -46,7 +47,7 @@ export default function Workflows({ workflows, onImport, onUpdate, onDelete, onU
   }
   return <>
     <PageHeading eyebrow="工作流管理" title="工作流" description="保存 RunningHub 地址，扫描 API JSON，并在 Profile 编辑器中确认所有节点。" action={<button className="primary" onClick={() => setImportOpen(true)}><CloudUpload size={17} />导入工作流</button>} />
-    {feedback && <div className={`import-feedback ${feedbackFailed ? "error" : "success"}`}><Check size={17} /><span>{feedback}</span></div>}
+    <Feedback message={feedback} tone={feedbackFailed ? "error" : "success"} onClose={()=>setFeedback(undefined)}/>
     {[true, false].map(builtIn => <section className="workflow-group" key={String(builtIn)} aria-label={builtIn ? "默认工作流" : "个人工作流"}>
     <div className="workflow-group-heading"><h2>{builtIn ? "默认工作流" : "个人工作流"}</h2><span>{workflows.filter(workflow => Boolean(workflow.builtIn) === builtIn).length}</span></div>
     <p className="workflow-group-description">{builtIn ? "节点映射随软件更新；H3 工作流可单独加载生成词 Skill。" : "自行导入的工作流，可编辑参数、显示项和输出。"}</p>
@@ -61,7 +62,7 @@ export default function Workflows({ workflows, onImport, onUpdate, onDelete, onU
 {!builtIn && (<div className="workflow-stats"><span><b>v{workflow.profileVersion}</b> Profile</span><span><b>{mediaCount}</b> 上传槽</span><span>{relativeTime(workflow.updatedAt)}</span></div>)}
       <div className="workflow-footer"><span className="workflow-health"><span className={workflow.needsReview ? "review" : "ready"} />{workflow.needsReview ? "需要人工确认" : "参数映射完整"}</span>{!builtIn && <>{workflow.outputs?.length ? <button className="secondary small" onClick={() => setEditingOutputs(workflow)}><Play size={14} />输出</button> : null}<button className="secondary small" onClick={() => setEditingVisibility(workflow)}><Settings2 size={14} />显示项</button><button className="secondary small" onClick={() => setEditing(workflow)}><Pencil size={14} />参数</button></>}{["2106577322987307010","2106994828660080641","2107063778012905474"].includes(workflow.runningHubWorkflowId) && <button className="secondary small" onClick={()=>setSkillWorkflow(workflow)}><Settings2 size={14}/>Skill</button>}<button className="primary small" onClick={() => onUse(workflow.id)}>创建任务<ArrowRight size={15} /></button></div>
     </article>})}</div></section>)}
-    <Suspense fallback={<div className="operation-toast" role="status">正在加载…</div>}>{importOpen && <ImportWorkflowModal onClose={() => setImportOpen(false)} onImport={workflow => { onImport(workflow); setFeedback(importSummary(workflow)); setImportOpen(false); }} />}
+    <Suspense fallback={<Notice><div className="operation-toast" role="status">正在加载…</div></Notice>}>{importOpen && <ImportWorkflowModal onClose={() => setImportOpen(false)} onImport={workflow => { onImport(workflow); setFeedback(importSummary(workflow)); setImportOpen(false); }} />}
     {editing && (editing.builtIn ? <WorkflowReadOnlyModal workflow={editing} section="parameters" onClose={() => setEditing(undefined)} /> : <WorkflowEditorModal workflow={editing} onClose={() => setEditing(undefined)} onSave={workflow => persistProfile(workflow, saved => { setFeedback(`已保存 ${saved.name} Profile v${saved.profileVersion}：${saved.parameters.length} 个参数，${saved.parameters.filter(isMediaParameter).length} 个媒体节点。`); setEditing(undefined); })} />)}
     {editingOutputs && (editingOutputs.builtIn ? <WorkflowReadOnlyModal workflow={editingOutputs} section="outputs" onClose={() => setEditingOutputs(undefined)} /> : <WorkflowOutputEditorModal workflow={editingOutputs} onClose={() => setEditingOutputs(undefined)} onSave={workflow => persistProfile(workflow, saved => { setFeedback(`已保存 ${saved.outputs?.length ?? 0} 个输出节点配置。`); setEditingOutputs(undefined); })} />)}
     {editingVisibility && (editingVisibility.builtIn ? <WorkflowReadOnlyModal workflow={editingVisibility} section="visibility" onClose={() => setEditingVisibility(undefined)} /> : <ParameterVisibilityModal workflow={editingVisibility} onClose={() => setEditingVisibility(undefined)} onSave={workflow => persistProfile(workflow, saved => { setFeedback(`已更新表单显示项：显示 ${saved.parameters.filter(item => item.visible !== false).length} 项，隐藏 ${saved.parameters.filter(item => item.visible === false).length} 项。`); setEditingVisibility(undefined); })} />)}
