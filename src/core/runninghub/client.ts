@@ -158,7 +158,7 @@ export class RunningHubClient {
     // of polling an empty status forever.
     const normalized = normalizeRunningHubResponse(data);
     if (classifyRemoteTaskResponse(data) === "FAILED") {
-      const detail = terminalTaskError(data, "FAILED");
+      const detail = terminalTaskError(this.redactResponse(data), "FAILED");
       throw new RunningHubError(detail.message, detail);
     }
     const code = normalized.errorCode;
@@ -201,7 +201,7 @@ export class RunningHubClient {
         await options.onStatus?.(status, response);
         if (remoteState === "SUCCESS") return parseJobResult(taskId, response);
         if (remoteState === "FAILED" || remoteState === "CANCELLED") {
-          const detail = terminalTaskError(response, remoteState === "CANCELLED" ? "CANCEL" : "FAILED");
+          const detail = terminalTaskError(this.redactResponse(response), remoteState === "CANCELLED" ? "CANCEL" : "FAILED");
           throw new RunningHubError(detail.message, detail);
         }
       } catch (error) {
@@ -239,7 +239,7 @@ export class RunningHubClient {
         try { parsed = bodyText ? JSON.parse(bodyText) : {}; }
         catch {
           const detail = classifyRunningHubError({
-            message: `Invalid JSON response: ${bodyText.slice(0, 500)}`,
+            message: `Invalid JSON response: ${bodyText.split(this.apiKey).join("****").slice(0, 500)}`,
             httpStatus: response.status,
             phase: options.phase,
           });
@@ -267,6 +267,8 @@ export class RunningHubClient {
   }
 
   private apiError(data: JsonObject, phase: RequestOptions["phase"], status?: number, fallback = "Request failed"): RunningHubError {
+    data = this.redactResponse(data);
+    fallback = fallback.split(this.apiKey).join("****");
     const detail = classifyRunningHubError({
       message: messageFrom(data, fallback),
       code: codeFrom(data),
@@ -276,6 +278,12 @@ export class RunningHubClient {
     });
     if (phase === "submit") detail.confirmedSubmitFailure = true;
     return new RunningHubError(detail.message, detail);
+  }
+
+  private redactResponse(data: JsonObject): JsonObject {
+    // Providers can echo a key under an arbitrary field name or inside a message.
+    const encodedKey = JSON.stringify(this.apiKey).slice(1, -1);
+    return JSON.parse(JSON.stringify(data).split(encodedKey).join("****")) as JsonObject;
   }
 }
 

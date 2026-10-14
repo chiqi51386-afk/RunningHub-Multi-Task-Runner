@@ -2,14 +2,25 @@ import type { JobError, JobErrorCode, JobPhase } from "../types.js";
 import { asObject, normalizeRunningHubResponse } from "./normalizer.js";
 
 const SECRET_PATTERNS = [
-  /("(?:api[_-]?key|authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret)"\s*:\s*)"(?:\\.|[^"\\])*"/gi,
+  /("(?:api[_-]?key|x-goog-api-key|authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret)"\s*:\s*)"(?:\\.|[^"\\])*"/gi,
   /(api[_-]?key\s*[=:]\s*)[^&\s,}\]]+/gi,
   /(authorization\s*:\s*bearer\s+)[A-Za-z0-9._-]+/gi,
   /(bearer\s+)[A-Za-z0-9._-]+/gi,
+  /((?:x-goog-api-key|access[_-]?token|refresh[_-]?token|password|client[_-]?secret)\s*[=:]\s*)[^&\s,}\]]+/gi,
 ];
 
 export function maskSecrets(value: string): string {
   return SECRET_PATTERNS.reduce((text, pattern, index) => text.replace(pattern, index === 0 ? '$1"****"' : "$1****"), value);
+}
+
+/** Error diagnostics only: never apply to functional media URLs or prompts. */
+export function sanitizeErrorRaw(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  let text: string;
+  try { text = maskSecrets(JSON.stringify(value) ?? String(value)); }
+  catch { return "[unserializable error detail]"; }
+  if (text.length > 8_000) return `${text.slice(0, 8_000)}…`;
+  try { return JSON.parse(text); } catch { return text; }
 }
 
 export class RunningHubError extends Error {
@@ -110,7 +121,7 @@ export function classifyRunningHubError(input: {
     safeToReassign,
     httpStatus: input.httpStatus,
     remoteCode,
-    raw: input.raw,
+    raw: sanitizeErrorRaw(input.raw),
   };
 }
 
@@ -150,7 +161,7 @@ export function terminalTaskError(raw: unknown, status = "FAILED"): JobError {
     accountRelated: false,
     safeToReassign: false,
     remoteCode: normalized.errorCode,
-    raw,
+    raw: sanitizeErrorRaw(raw),
     nodeId,
     nodeName,
   };

@@ -303,7 +303,7 @@
 | has-tostringtag | 1.0.2 | MIT | transitive/development | core |
 | hasown | 2.0.4 | MIT | transitive/development | core |
 | hosted-git-info | 4.1.0 | ISC | transitive/development | core |
-| http-cache-semantics | 4.2.0 | BSD-2-Clause | transitive/development | core |
+| http-cache-semantics | 4.3.0 | BSD-2-Clause | transitive/development | core |
 | http-proxy-agent | 7.0.2 | MIT | transitive/development | core |
 | http2-wrapper | 1.0.3 | MIT | transitive/development | core |
 | https-proxy-agent | 7.0.6 | MIT | transitive/development | core |
