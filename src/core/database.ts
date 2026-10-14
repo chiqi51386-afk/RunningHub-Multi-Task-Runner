@@ -25,7 +25,7 @@ const ACTIVE_SLOT = "(status IN ('ASSIGNED','UPLOADING','SUBMITTING','SUBMIT_UNK
 const SLOT_COUNT = `(SELECT COUNT(*) FROM jobs WHERE account_id=accounts.id AND ${ACTIVE_SLOT})`;
 const ACCOUNT_SELECT = `
   SELECT id, label, encrypted_key, enabled, manual_disabled, auto_disabled,
-         auto_disabled_reason, state, current_job_id, balance, coins, max_concurrency, external_task_count,
+         auto_disabled_reason, state, current_job_id, balance, coins, max_concurrency, external_task_count, preferred, priority_weight,
          ${SLOT_COUNT} AS active_job_count,
          remote_task_count, api_type, cooldown_until, last_checked_at,
          last_used_at, last_success_at, last_error_at, created_at, updated_at
@@ -199,6 +199,8 @@ export class CoreDatabase {
       this.raw.exec("ALTER TABLE jobs ADD COLUMN instance_type TEXT NOT NULL DEFAULT 'default'");
     }
     const accountColumns=this.raw.prepare("PRAGMA table_info(accounts)").all() as DbRow[];
+    if(!accountColumns.some(c=>c.name==='preferred'))this.raw.exec("ALTER TABLE accounts ADD COLUMN preferred INTEGER NOT NULL DEFAULT 0");
+    if(!accountColumns.some(c=>c.name==='priority_weight'))this.raw.exec("ALTER TABLE accounts ADD COLUMN priority_weight INTEGER NOT NULL DEFAULT 1");
     if(!accountColumns.some(c=>c.name==='max_concurrency'))this.raw.exec("ALTER TABLE accounts ADD COLUMN max_concurrency INTEGER NOT NULL DEFAULT 1");
     if(!accountColumns.some(c=>c.name==='external_task_count'))this.raw.exec("ALTER TABLE accounts ADD COLUMN external_task_count INTEGER NOT NULL DEFAULT 0");
     this.repairMisclassifiedSubmitErrors();
@@ -408,7 +410,7 @@ export class CoreDatabase {
           OR ((coins IS NULL OR trim(coins) = '')
             AND (balance IS NULL OR trim(balance) = '' OR CAST(balance AS REAL) > 0)))
         AND (cooldown_until IS NULL OR cooldown_until <= ?)
-      ORDER BY COALESCE(last_used_at, 0) ASC, created_at ASC
+      ORDER BY preferred DESC, COALESCE(last_used_at, 0) ASC, created_at ASC, rowid ASC
     `).all(now) as DbRow[]).map(accountFromRow);
   }
 
@@ -602,6 +604,12 @@ export class CoreDatabase {
     if(!this.getAccount(id))throw new Error("账号不存在");
     return this.updateAccount(id,{maxConcurrency:Number(value),lastCheckedAt:null});
   }
+  setAccountPriority(id:string, preferred:unknown): Account {
+    if(typeof preferred!=="boolean")throw new Error("优先使用开关无效");
+    if(!this.getAccount(id))throw new Error("账号不存在");
+    this.raw.prepare("UPDATE accounts SET preferred=?,priority_weight=1,updated_at=? WHERE id=?").run(preferred?1:0,Date.now(),id);
+    return this.getAccount(id)!;
+  }
 
   releaseAccount(accountId: string, jobId: string, successful: boolean, state: AccountState = "IDLE"): Account | undefined {
     const account=this.getAccount(accountId);
@@ -652,6 +660,7 @@ function optionalString(value: unknown): string | undefined { return value == nu
 
 function accountFromRow(row: DbRow): Account {
   return {
+    preferred: Boolean(row.preferred), priorityWeight:Number(row.priority_weight??1),
     id: String(row.id), label: String(row.label), enabled: Boolean(row.enabled),
     maxConcurrency:Number(row.max_concurrency ?? 1), activeJobCount:Number(row.active_job_count ?? 0), externalTaskCount:Number(row.external_task_count ?? 0),
     manualDisabled: Boolean(row.manual_disabled), autoDisabled: Boolean(row.auto_disabled),

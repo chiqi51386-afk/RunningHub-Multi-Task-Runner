@@ -41,6 +41,10 @@ export class AccountPool {
     return account;
   }
   list(): Account[] { return this.db.listAccounts(); }
+  setPriority(id:string,preferred:unknown):Account {
+    const account=this.db.setAccountPriority(id,preferred);
+    this.events.emit("account.updated",account);return account;
+  }
   get(id: string): Account | undefined { return this.db.getAccount(id); }
 
   enable(id: string): Account {

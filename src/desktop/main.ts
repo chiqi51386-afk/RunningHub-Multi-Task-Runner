@@ -1,4 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain as electronIpcMain, nativeImage, shell, safeStorage, clipboard } from "electron";
+import { app, BrowserWindow, dialog, ipcMain as electronIpcMain, nativeImage, shell, safeStorage, clipboard, session } from "electron";
+import { normalizeProxySettings, electronProxyConfig, type AppProxySettings } from "./proxy.js";
+import { sessionFetch } from "./electronNetwork.js";
 import type { IpcMainInvokeEvent } from "electron";
 import { focusExistingWindow } from "./windowLifecycle.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -23,6 +25,7 @@ import {WorkflowSkillStore} from "../core/gemini/workflowSkills.js";
 import { selectOptimization } from "../core/gemini/selection.js";
 import { optimizeH3 } from "../core/gemini/h3Optimizer.js";
 import { TTS_LANGUAGES, type TtsInput } from "../core/gemini/ttsTypes.js";
+import { stereoWav } from "../core/gemini/stereoWav.js";
 import type { Account, CreateJobInput, InstanceType, Job, WorkflowProfile, WorkflowRecord } from "../core/types.js";
 import { latestReleaseApiUrls, latestReleaseUrl, parseLatestRelease, trustedUpdateAssetPrefixes, updateRepositoryUrl } from "./updates.js";
 import type { UpdateInfo, UpdateProgress } from "./updates.js";
@@ -44,6 +47,7 @@ let gemini: GeminiPool;
 let workflowSkills: WorkflowSkillStore;
 const ttsRequests = new Map<string, AbortController>();
 const smokeMode = process.argv.includes("--smoke");
+if(process.platform==='win32')app.setAppUserModelId('ai.runninghub.runner');
 if (smokeMode) app.setPath("userData", mkdtempSync(path.join(app.getPath("temp"), "rh-desktop-smoke-")));
 else app.setPath("userData", path.join(app.getPath("appData"), "runninghub-multi-task-runner-core"));
 let mainWindow: BrowserWindow | undefined;
@@ -61,6 +65,16 @@ const ipcMain = {
 };
 let quitting = false;
 let desktopSettingsPath = "";
+let activeProxy: AppProxySettings = { enabled: false, url: "" };
+// Explicit session configuration is applied before backend recovery starts.
+// Never use Node's global fetch here: it does not use Electron's proxy settings.
+let networkSession: Electron.Session;
+const applicationFetch: typeof fetch = (input, init) => {
+  const currentSession = networkSession;
+  return sessionFetch(() => currentSession)(input, init);
+};
+let proxySaving = false;
+let proxyTesting = false;
 let defaultOutputDir = "";
 let thumbnailCacheDir = "";
 let updateInProgress = false;
@@ -90,7 +104,7 @@ async function checkForUpdate() {
   let lastError = "GitHub 更新服务暂不可用。";
   for (const apiUrl of latestReleaseApiUrls) {
     try {
-      const response = await fetch(apiUrl, {
+      const response = await applicationFetch(apiUrl, {
         headers: { Accept: "application/vnd.github+json", "User-Agent": `RunningHub-Runner/${applicationVersion}` },
         signal: AbortSignal.timeout(15_000),
       });
@@ -157,7 +171,7 @@ async function downloadAndInstallUpdate(): Promise<{ started: true }> {
     await mkdir(updateRoot, { recursive: true });
 
     sendUpdateProgress({ stage: "downloading", percent: 0, message: `正在下载 v${info.latestVersion}…` });
-    const response = await fetch(info.assetUrl, {
+    const response = await applicationFetch(info.assetUrl, {
       headers: { Accept: "application/octet-stream", "User-Agent": `RunningHub-Runner/${applicationVersion}` },
       redirect: "follow",
       signal: AbortSignal.timeout(10 * 60_000),
@@ -258,13 +272,13 @@ Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
   }
 }
 
-interface DesktopSettings { outputDir?: string; namingRule?: NamingRule }
+interface DesktopSettings { outputDir?: string; namingRule?: NamingRule; proxy?: AppProxySettings }
 
 async function readDesktopSettings(): Promise<DesktopSettings> {
   if (!desktopSettingsPath) return {};
   try {
     const parsed = JSON.parse(await readFile(desktopSettingsPath, "utf8")) as DesktopSettings;
-    return { outputDir: typeof parsed.outputDir === "string" && path.isAbsolute(parsed.outputDir) ? parsed.outputDir : undefined, namingRule: namingRule(parsed.namingRule) };
+    return { outputDir: typeof parsed.outputDir === "string" && path.isAbsolute(parsed.outputDir) ? parsed.outputDir : undefined, namingRule: namingRule(parsed.namingRule), proxy: parsed.proxy };
   } catch { return {}; }
 }
 
@@ -304,7 +318,7 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
 
 function accountView(account: Account) {
-  return { id: account.id, maxConcurrency:account.maxConcurrency??1,activeJobCount:account.activeJobCount??0,externalTaskCount:account.externalTaskCount??0,label: account.label, state: account.state, coins: account.coins ?? account.balance, apiType: account.apiType, enabled: account.enabled, lastCheckedAt: account.lastCheckedAt, currentJobId: account.currentJobId, remoteTaskCount: account.lastRemoteTaskCount };
+  return { id: account.id, preferred:account.preferred,priorityWeight:account.priorityWeight,maxConcurrency:account.maxConcurrency??1,activeJobCount:account.activeJobCount??0,externalTaskCount:account.externalTaskCount??0,label: account.label, state: account.state, coins: account.coins ?? account.balance, apiType: account.apiType, enabled: account.enabled, lastCheckedAt: account.lastCheckedAt, currentJobId: account.currentJobId, remoteTaskCount: account.lastRemoteTaskCount };
 }
 
 function workflowView(workflow: WorkflowRecord) {
@@ -456,6 +470,48 @@ async function currentOutputDir(): Promise<string> {
 }
 
 function registerHandlers(): void {
+  ipcMain.handle("clipboard:writeText", async (_event, text: unknown) => {
+    if (typeof text !== "string" || text.length > 2_000_000) throw new Error("复制内容无效或过长");
+    await clipboard.writeText(text);
+    if (await clipboard.readText() !== text) throw new Error("剪贴板写入失败，请重试");
+  });
+  ipcMain.handle("proxy:settings", async () => ({ saved: normalizeProxySettings((await readDesktopSettings()).proxy), active: activeProxy }));
+  ipcMain.handle("proxy:save", async (_event, input: unknown) => {
+    const proxy = normalizeProxySettings(input);
+    if (proxySaving) throw new Error("代理设置正在保存，请稍后再试");
+    proxySaving = true;
+    try {
+      // Use a fresh connection pool: existing requests keep their original session.
+      const nextSession = session.fromPartition(`app-network-${randomUUID()}`, { cache: false });
+      await nextSession.setProxy(electronProxyConfig(proxy));
+      await saveDesktopSettings({ ...await readDesktopSettings(), proxy });
+      networkSession = nextSession;
+      activeProxy = proxy;
+      return { saved: proxy, active: activeProxy };
+    } finally { proxySaving = false; }
+  });
+  ipcMain.handle("proxy:test", async (_event, input: unknown) => {
+    const proxy = normalizeProxySettings(input);
+    if (proxyTesting) throw new Error("连接测试正在进行中");
+    proxyTesting = true;
+    const testSession = session.fromPartition("proxy-connection-test", { cache: false });
+    try {
+      await testSession.closeAllConnections();
+      await testSession.setProxy(electronProxyConfig(proxy));
+      return await Promise.all([
+        ["Gemini", "https://generativelanguage.googleapis.com/"],
+        ["RunningHub", "https://www.runninghub.ai/"],
+        ["GitHub", "https://api.github.com/"],
+      ].map(async ([name, url]) => {
+        const start = Date.now();
+        try {
+          const response = await testSession.fetch(url!, { method: "HEAD", signal: AbortSignal.timeout(15000), cache: "no-store", credentials: "omit" });
+          await response.body?.cancel();
+          return `${name}：已收到响应（HTTP ${response.status}，${Date.now() - start} ms）`;
+        } catch { return `${name}：连接失败或超时，请检查代理端口及网络`; }
+      }));
+    } finally { await testSession.closeAllConnections().catch(() => undefined); proxyTesting = false; }
+  });
   const namingPreview = (rule: NamingRule) => ({ rule, preview: shortOutputPath({ rule, identity:{task:1,date:new Date().toISOString().slice(0,10).replaceAll('-','')},workflow: "H3多参考", index: 0,total:1, url: "https://example.invalid/video.mp4", extension: "mp4" }) });
   ipcMain.handle("downloads:naming", async () => namingPreview(namingRule((await readDesktopSettings()).namingRule)));
   ipcMain.handle("downloads:setNaming", async (_event, value: unknown) => {
@@ -466,6 +522,7 @@ function registerHandlers(): void {
   });
   ipcMain.handle("accounts:setConcurrency", (_event,id:string,value:unknown)=>accountView(backend.accounts.setConcurrency(id,value)));
   ipcMain.handle("accounts:list", () => backend.accounts.list().map(accountView));
+  ipcMain.handle("accounts:setPriority", (_event,id:string,preferred:unknown)=>accountView(backend.accounts.setPriority(id,preferred)));
   ipcMain.handle("gemini:setOptimizationEnabled", (_event, enabled: unknown) => gemini.store.setOptimizationEnabled(enabled));
   const skillWorkflow=(id:unknown)=>{
     if(typeof id!=='string')throw Error('工作流无效');
@@ -505,8 +562,9 @@ function registerHandlers(): void {
         const result=await gemini.speech(request,controller.signal);
         controller.signal.throwIfAborted();
         await mkdir(directory,{recursive:true});
-        await writeFile(localPath,Buffer.from(result.text,"base64"));
+        await writeFile(localPath,stereoWav(Buffer.from(result.text,"base64")));
       }
+      else { const existing=await readFile(localPath);const converted=stereoWav(existing);if(converted!==existing)await writeFile(localPath,converted); }
       return {localPath,fileName:name,previewUrl:pathToFileURL(localPath).toString()};
     }finally{ttsRequests.delete(id);}
   });
@@ -614,7 +672,34 @@ function registerHandlers(): void {
   });
   ipcMain.handle("jobs:cancel", async (_event, id: string) => jobView(await backend.scheduler.cancel(id)));
   ipcMain.handle("jobs:retry-download", async (_event, id: string) => jobView(backend.downloads.retryNow(id)));
-  ipcMain.handle("jobs:remove", (_event, id: string) => backend.jobs.remove(id));
+  ipcMain.handle("jobs:remove", async (_event, id: string) => {
+    const job=backend.jobs.get(id);
+    if(!job)return false;
+    if(!["COMPLETED","FAILED","CANCELLED","SUBMIT_UNKNOWN"].includes(job.status))throw new Error("请先停止任务再删除");
+    const choice=await dialog.showMessageBox(mainWindow!,{type:"warning",title:"删除任务",message:"删除这条任务记录？",detail:"勾选后，仅将本任务已下载的输出文件移入回收站，不删除输入素材。",buttons:["取消","删除"],defaultId:0,cancelId:0,checkboxLabel:"同时删除本地输出文件",checkboxChecked:false});
+    if(choice.response!==1)return false;
+    if(choice.checkboxChecked){
+      const files=[...new Set(job.outputs?.files.map(file=>file.localPath).filter((file):file is string=>!!file)??[])];
+      for(const file of files){
+        const info=await stat(file).catch((error:NodeJS.ErrnoException)=>{if(error.code==='ENOENT')return undefined;throw error;});
+        if(!info)continue;
+        if(!info.isFile())throw new Error("输出路径不是文件，已停止删除");
+        const resolved=await realpath(file);
+        const outputRoot=await realpath(job.outputDir??backend.config.outputDir);
+        const relative=path.relative(outputRoot,resolved);
+        if(!relative || relative.startsWith(`..${path.sep}`) || relative==='..' || path.isAbsolute(relative))throw new Error("输出文件不在该任务的下载目录内，已停止删除");
+        for(const other of backend.jobs.list()){
+          for(const media of other.media){if(media.localPath && await realpath(media.localPath).catch(()=>media.localPath)===resolved)throw new Error("输出文件被用作任务输入，请保留本地文件后删除记录");}
+          if(other.id!==id)for(const output of other.outputs?.files??[]){if(output.localPath && await realpath(output.localPath).catch(()=>output.localPath)===resolved)throw new Error("输出文件被其他任务使用，请保留本地文件");}
+        }
+      }
+      for(const file of files){
+        const exists=await stat(file).then(()=>true).catch((error:NodeJS.ErrnoException)=>{if(error.code==='ENOENT')return false;throw error;});
+        if(exists)await shell.trashItem(file);
+      }
+    }
+    return backend.jobs.remove(id);
+  });
   ipcMain.handle("downloads:directory", () => backend.config.outputDir);
   ipcMain.handle("downloads:openDirectory", async () => {
     await mkdir(backend.config.outputDir, { recursive: true });
@@ -700,16 +785,20 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
   thumbnailCacheDir = path.join(userData, "thumbnail-cache");
   desktopSettingsPath = path.join(userData, "settings.json");
   const desktopSettings = await readDesktopSettings();
+  activeProxy = normalizeProxySettings(desktopSettings.proxy);
+  networkSession = session.fromPartition("app-network-startup", { cache: false });
+  await networkSession.setProxy(electronProxyConfig(activeProxy));
   const outputDir = desktopSettings.outputDir ?? defaultOutputDir;
   await mkdir(outputDir, { recursive: true });
   const secretStore = smokeMode ? new InMemorySecretStore() : new SystemSecretStore(safeStorage);
   backend = new RunningHubBackend({
+    fetch: applicationFetch,
     databasePath: smokeMode ? ":memory:" : path.join(userData, "runninghub.sqlite"),
     secretStore,
     config: { apiHost: "https://www.runninghub.ai", outputDir },
   });
   if (secretStore instanceof SystemSecretStore) migratePlaintextKeys(backend.database.raw, secretStore);
-  gemini = new GeminiPool(new GeminiStore(backend.database.raw,secretStore));
+  gemini = new GeminiPool(new GeminiStore(backend.database.raw,secretStore), { fetch: applicationFetch });
   workflowSkills = new WorkflowSkillStore(backend.database.raw);
   backend.scheduler.optimizePrompt = async (job,signal) => {
     const optimization=job.profileSnapshot.promptOptimization;
@@ -795,10 +884,22 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
     })()`);
     console.log(settingsScroll ? "DESKTOP_SETTINGS_SCROLL_PASS" : "DESKTOP_SETTINGS_SCROLL_FAIL");
     await window.webContents.executeJavaScript(`(async () => {
+      const api = window.runningHub.proxy;
+      if (!document.querySelector('button[aria-label="启用自定义代理"]')) throw new Error('Proxy control missing');
+      const original = await api.settings();
+      if (original.active.enabled) throw new Error('Proxy must default to direct');
+      const result = await api.save({enabled:true,url:'http://127.0.0.1:7890'});
+      if(!result.active.enabled || !result.saved.enabled) throw new Error('Proxy change must apply immediately');
+      if(!(await api.settings()).saved.enabled) throw new Error('Proxy persistence failed');
+      await api.save(original.saved);
+      if((await api.settings()).active.enabled) throw new Error('Disabling proxy must apply immediately');
+    })()`);
+    console.log('DESKTOP_PROXY_SETTINGS_PASS');
+    await window.webContents.executeJavaScript(`(async () => {
       const wait = () => new Promise(r => setTimeout(r, 450));
       const modal = document.querySelector('.settings-modal');
       if (modal.querySelector('select')) throw new Error('Native settings select remains');
-      const buttons = modal.querySelectorAll('.app-select > button');
+      const buttons = [...modal.querySelectorAll('.app-select > button')].filter(button=>button.getAttribute('aria-label')!=='代理类型');
       if (buttons.length !== 2) throw new Error('Settings dropdowns missing');
       buttons[0].scrollIntoView({block:'center',behavior:'instant'}); buttons[0].focus({preventScroll:true}); await wait(); buttons[0].click(); await wait();
       const list = document.querySelector('.app-select-options');
@@ -831,11 +932,14 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       document.querySelector('#runninghub-tab').click();
       await new Promise(r=>setTimeout(r,150));
       const concurrency=document.querySelector('[aria-label="并发界面测试 最大并发"]');
-      if(!concurrency || document.querySelectorAll('.account-table .table-header > span').length!==6)throw Error('Concurrency column missing');
+      if(!concurrency || document.querySelectorAll('.account-table .table-header > span').length!==7)throw Error('Concurrency/priority column missing');
       concurrency.click();await new Promise(r=>setTimeout(r,100));
       [...document.querySelectorAll('.app-select-options [role="option"]')].find(b=>b.textContent==='3 路').click();
       await new Promise(r=>setTimeout(r,200));
       if((await window.runningHub.accounts.list()).find(a=>a.id===testAccount.id).maxConcurrency!==3)throw Error('Concurrency setting did not persist');
+      const priority=document.querySelector('[aria-label="并发界面测试 优先使用"]');priority.click();
+      await new Promise(r=>setTimeout(r,200));
+      if(!(await window.runningHub.accounts.list()).find(a=>a.id===testAccount.id).preferred)throw Error('Priority toggle not saved');
       await window.runningHub.accounts.remove(testAccount.id);
       document.querySelector('#gemini-tab').click();
       await new Promise(r=>setTimeout(r,150));
@@ -847,10 +951,10 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       const select=root.querySelector('[aria-label="Gemini 模型"]');
       const skillSelect=root.querySelector('[aria-label="第一阶段 Skill"]');
       if(skillSelect)throw new Error('Obsolete first-stage selector remains');
-      for(const [label,id] of [['Gemini 3.8 Flash','gemini-3.8-flash'],['Gemini 3.7 Flash','gemini-3.7-flash'],['Gemini 3.5 Flash-Lite','gemini-3.5-flash-lite']]) {
+      for(const [label,id] of [['Gemini 3.8 Flash','gemini-3.8-flash'],['Gemini 3.5 Flash-Lite','gemini-3.5-flash-lite']]) {
         select.click(); await new Promise(r=>setTimeout(r,100));
         const options=[...document.querySelectorAll('.app-select-options [role="option"]')];
-        if(options.length!==3)throw new Error('Gemini model choices missing');
+        if(options.length!==2)throw new Error('Gemini model choices missing');
         options.find(b=>b.textContent===label).click(); await new Promise(r=>setTimeout(r,100));
         if((await api.settings()).model===id)throw new Error('Model changed before save');
         [...root.querySelectorAll('button')].find(b=>b.textContent==='保存模型').click();
@@ -1153,7 +1257,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       for(let i=0;i<30&&!Number.isFinite(audio.duration);i++)await new Promise(r=>setTimeout(r,100));
       if(!(audio.duration>0))throw Error('TTS generated file cannot be played');
       const source=audio.src;
-      [...root.querySelectorAll('button')].find(b=>b.textContent==='发送到数字人').click();
+      [...root.querySelectorAll('button')].find(b=>b.textContent==='发送到 Inf数字人').click();
       await new Promise(r=>setTimeout(r,450));
       const active=[...document.querySelectorAll('.create-mode-tabs button')].find(b=>b.getAttribute('aria-pressed')==='true');
       if(active?.textContent!=='Inf数字人')throw Error('TTS handoff went to wrong workspace');
@@ -1161,6 +1265,15 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       const audioParameter=draft.workflowSnapshot.parameters.find(p=>p.valueType==='audio'&&p.visible!==false);
       if(!audioParameter || draft.mediaOverrides[audioParameter.id]?.previewUrl!==source)throw Error('TTS audio did not reach ordinary avatar draft');
       if(localStorage.getItem('rh-runner.mv-segments.v1')!==mvBefore)throw Error('TTS changed MV draft');
+      [...document.querySelectorAll('.create-mode-tabs button')].find(b=>b.textContent==='Gemini TTS').click();
+      await new Promise(r=>setTimeout(r,100));
+      [...root.querySelectorAll('button')].find(b=>b.textContent==='发送到 H3数字人').click();
+      await new Promise(r=>setTimeout(r,500));
+      const shared=JSON.parse(localStorage.getItem('rh-runner.mv-segments.v1.shared'));
+      const mvAudio=shared.workflowSnapshot.parameters.find(p=>p.key==='34.audio');
+      if(shared.mediaOverrides[mvAudio.id]?.previewUrl!==source)throw Error('H3 audio handoff missing');
+      const segments=JSON.parse(localStorage.getItem('rh-runner.mv-segments.v1'));
+      if(!segments.every(s=>s.draft.mediaOverrides[mvAudio.id]?.previewUrl===source))throw Error('H3 segment audio inconsistent');
       [...document.querySelectorAll('.create-mode-tabs button')].find(b=>b.textContent==='Gemini TTS').click();
       await new Promise(r=>setTimeout(r,200));
     })()`);
@@ -1229,10 +1342,50 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
       await new Promise(r=>setTimeout(r,450));
       const modal=document.querySelector('[aria-label="任务预览"]');
       if(!modal?.textContent.includes('smoke optimized prompt') || modal.querySelectorAll('.preview-prompt button:not(:disabled)').length!==2)throw Error('Failed/live optimized preview or copy missing');
+      for(const button of modal.querySelectorAll('.preview-prompt button:not(:disabled)')){button.click();await new Promise(r=>setTimeout(r,150));if(document.body.textContent.includes('复制失败'))throw Error('Prompt copy failed');}
+      const close=modal.querySelector('button[aria-label="关闭"]');const before=close.getBoundingClientRect().top;
+      const inputs=modal.querySelector('.task-inputs');inputs.scrollTop=inputs.scrollHeight;await new Promise(r=>setTimeout(r,100));
+      if(Math.abs(close.getBoundingClientRect().top-before)>1)throw Error('Preview close button scrolled away');
       modal.querySelector('button[aria-label="关闭"]').click();
       [...document.querySelectorAll('.nav-list button')].find(b=>b.textContent==='创建任务').click();await new Promise(r=>setTimeout(r,200));
     })()`);
     console.log('DESKTOP_WORKFLOW_SKILL_AND_LIVE_PREVIEW_PASS');
+    const previousBounds=window.getBounds();
+    for(const height of [720,1600]){
+      window.setSize(1200,height);
+      await window.webContents.executeJavaScript(`(async()=>{
+        [...document.querySelectorAll('.nav-list button')].find(b=>b.textContent==='任务队列').click();await new Promise(r=>setTimeout(r,200));
+        const list=document.querySelector('.virtual-job-list'),panel=document.querySelector('.jobs-panel');
+        const bounds=panel.getBoundingClientRect();
+        if(innerHeight-bounds.bottom>65 || bounds.bottom>innerHeight || list.clientHeight<200)throw Error('Task list does not fill remaining window');
+      })()`);
+      await writeFile(path.join(app.getPath('temp'),`rh-jobs-responsive-${height}.png`),(await window.webContents.capturePage()).toPNG());
+    }
+    window.setBounds(previousBounds);
+    console.log('DESKTOP_JOBS_HEIGHT_PASS');
+    const originalDialog=dialog.showMessageBox,originalTrash=shell.trashItem;
+    const removedFiles:string[]=[];
+    try{
+      let choice={response:0,checkboxChecked:false};
+      dialog.showMessageBox=(async(...args:any[])=>{const options=args.at(-1);if(options.checkboxChecked!==false)throw Error('File deletion must default off');return choice;}) as typeof dialog.showMessageBox;
+      shell.trashItem=async file=>{removedFiles.push(file);};
+      const callRemove=()=>window.webContents.executeJavaScript(`window.runningHub.jobs.remove(${JSON.stringify(previewJob.id)})`);
+      if(await callRemove()!==false || !backend.jobs.get(previewJob.id))throw Error('Cancel deletion lost task');
+      const fixture=path.join(backend.config.outputDir,'delete-smoke.wav');await writeFile(fixture,ttsWav);
+      backend.database.updateJob(previewJob.id,{outputs:{taskId:'smoke',files:[{url:'https://example.invalid/audio',localPath:fixture}],texts:[],raw:{}}});
+      choice={response:1,checkboxChecked:true};
+      if(await callRemove()!==true || removedFiles[0]!==fixture)throw Error('Opt-in output trash failed');
+      const preserved=backend.jobs.create({workflowId:previewWorkflow.id,parameters:previewParameters});backend.jobs.transition(preserved.id,'CANCELLED');
+      backend.database.updateJob(preserved.id,{outputs:{taskId:'smoke',files:[{url:'https://example.invalid/audio',localPath:fixture}],texts:[],raw:{}}});
+      choice={response:1,checkboxChecked:false};
+      await window.webContents.executeJavaScript(`window.runningHub.jobs.remove(${JSON.stringify(preserved.id)})`);
+      if(removedFiles.length!==1 || backend.jobs.get(preserved.id))throw Error('Default deletion must preserve file');
+    }finally{dialog.showMessageBox=originalDialog;shell.trashItem=originalTrash;}
+    console.log('DESKTOP_DELETE_OPTIONS_PASS');
+    const oldClipboard=await clipboard.readText();
+    await window.webContents.executeJavaScript(`window.runningHub.clipboard.writeText('原始生成词 / optimized prompt')`);
+    if(await clipboard.readText()!=='原始生成词 / optimized prompt')throw Error('Clipboard IPC did not write');
+    await clipboard.writeText(oldClipboard);
     await window.webContents.executeJavaScript(`[...document.querySelectorAll('.create-mode-tabs button')].find(b=>b.textContent==='Inf数字人').click()`);
     await new Promise(r=>setTimeout(r,150));
     await writeFile(path.join(app.getPath('temp'),'rh-fixed-modules.png'),(await window.webContents.capturePage()).toPNG());

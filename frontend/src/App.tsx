@@ -11,6 +11,7 @@ import type { AccountView, CreateJobDraft, JobView, ViewId, WorkflowView } from 
 import { useDebouncedSave } from "./useDebouncedSave";
 import { useDialogFocus } from "./useDialogFocus";
 import { useErrorQueue } from "./useErrorQueue";
+import appIcon from "../../desktop/assets/icon.png";
 import Accounts from "./views/Accounts";
 import Jobs from "./views/Jobs";
 import Overview from "./views/Overview";
@@ -292,7 +293,7 @@ function App() {
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileNav ? "sidebar-open" : ""}`}>
-        <div className="brand"><div className="brand-mark"><Boxes size={21} /></div><div><strong>RH Runner</strong><span>本地任务调度</span></div></div>
+        <div className="brand"><img className="brand-mark" src={appIcon} alt="" /><div><strong>RH Runner</strong><span>本地任务调度</span></div></div>
         <nav className="nav-list" aria-label="主导航">
           <p className="nav-kicker">工作区</p>
           {nav.map(item => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => { setView(item.id); setMobileNav(false); }}><item.icon size={18} /><span>{item.label}</span>{item.id === "jobs" && stats.queued > 0 && <b>{stats.queued}</b>}</button>)}
@@ -314,7 +315,7 @@ function App() {
           </div>
         </header>
 
-        <div className={`page ${view === "overview" ? "overview-page" : ""}`}>
+        <div className={`page ${view === "overview" ? "overview-page" : view === "jobs" ? "jobs-page" : ""}`}>
           <Feedback message={appError} onClose={()=>setAppError(undefined)}/>
           {view === "overview" && <Overview stats={stats} accounts={accounts} jobs={jobs} onView={setView} />}
           {view === "accounts" && <Accounts accounts={accounts} refreshing={refreshing} onRefresh={refreshAccount} onRefreshAll={refreshAllAccounts} onAdd={() => setAddAccountOpen(true)} onCopyApiKeysUrl={() => { const url = "https://www.runninghub.ai/zh-cn/call-api/bill-task?tab=keys&type=consumer"; void (window.runningHub ? window.runningHub.external.copyApiKeysUrl() : navigator.clipboard.writeText(url)).then(() => setCopyNotice("API 密钥页面链接已复制")).catch(error => setAppError(error instanceof Error ? error.message : "复制失败，请重试")); }} onRekey={setRekeyAccount} onToggle={id => { const account = accounts.find(item => item.id === id); if (!account) return; if (window.runningHub) void window.runningHub.accounts.setEnabled(id, !account.enabled).then(updated => setAccounts(list => list.map(item => item.id === id ? updated : item))).catch(error => setAppError(error instanceof Error ? error.message : "账号状态更新失败")); else setAccounts(list => list.map(a => a.id === id ? { ...a, enabled: !a.enabled, state: a.enabled ? "DISABLED" : "IDLE" } : a)); }} onRemove={async id => { const account = accounts.find(item => item.id === id); if (!account || !await confirm(`删除账号“${account.label}”？已保存的 API Key 将一并删除。`)) return; if (window.runningHub) void window.runningHub.accounts.remove(id).then(() => setAccounts(list => list.filter(item => item.id !== id))).catch(error => setAppError(error instanceof Error ? error.message : "账号删除失败")); else setAccounts(list => list.filter(item => item.id !== id)); }} />}
@@ -332,7 +333,7 @@ function App() {
               setJobs(list => list.map(item => item.id === id ? updated : item));
             } catch (error) { setAppError(error instanceof Error ? error.message : "取消失败，请稍后重试"); }
             finally { cancelLocks.current.delete(id); setCancelling(current => { const next = new Set(current); next.delete(id); return next; }); }
-          }} onRegenerate={regenerateFrom} onDelete={async id => { const job = jobs.find(item => item.id === id); if (!job || !await confirm(`删除任务“${job.workflowName}”？下载到本地的媒体文件不会被删除。`)) return; if (window.runningHub) void window.runningHub.jobs.remove(id).then(() => setJobs(list => list.filter(item => item.id !== id))).catch(error => setAppError(error instanceof Error ? error.message : "任务删除失败")); else setJobs(list => list.filter(item => item.id !== id)); }} />}
+          }} onRegenerate={regenerateFrom} onDelete={async id => { const job = jobs.find(item => item.id === id); if (!job) return; if (window.runningHub) void window.runningHub.jobs.remove(id).then(removed => {if(removed)setJobs(list => list.filter(item => item.id !== id));}).catch(error => setAppError(error instanceof Error ? error.message : "任务删除失败")); else if(await confirm("删除任务记录？"))setJobs(list => list.filter(item => item.id !== id)); }} />}
         </div>
       </main>
       {mobileNav && <button className="scrim" onClick={() => setMobileNav(false)} aria-label="关闭导航" />}

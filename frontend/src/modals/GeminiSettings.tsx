@@ -13,7 +13,6 @@ function stateLabel(key: GeminiKeyView) {
 const modelOptions = [
   { id: DEFAULT_GEMINI_MODEL, label: "Gemini 3.5 Flash-Lite" },
   { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
-  { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash" },
 ];
 
 export default function GeminiSettings() {

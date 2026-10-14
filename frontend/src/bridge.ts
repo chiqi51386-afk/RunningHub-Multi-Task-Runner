@@ -22,6 +22,12 @@ export interface UpdateProgress {
 }
 
 export interface RunningHubRendererBridge {
+  clipboard: { writeText(text: string): Promise<void> };
+  proxy: {
+    settings(): Promise<{ saved: { enabled: boolean; url: string }; active: { enabled: boolean; url: string } }>;
+    save(input: { enabled: boolean; url: string }): Promise<{ saved: { enabled: boolean; url: string }; active: { enabled: boolean; url: string } }>;
+    test(input: { enabled: boolean; url: string }): Promise<string[]>;
+  };
   skills: {
     settings(workflowId:string):Promise<import('../../src/core/gemini/workflowSkills.js').WorkflowSkillSettings>;
     select(workflowId:string,skillId:string):Promise<import('../../src/core/gemini/workflowSkills.js').WorkflowSkillSettings>;
@@ -43,6 +49,7 @@ export interface RunningHubRendererBridge {
     copyKeysUrl(): Promise<void>;
   };
   accounts: {
+    setPriority(id:string,preferred:boolean):Promise<AccountView>;
     setConcurrency(id:string,value:number):Promise<AccountView>;
     list(): Promise<AccountView[]>;
     add(input: { label: string; apiKey: string }): Promise<AccountView>;

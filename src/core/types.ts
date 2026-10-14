@@ -41,6 +41,8 @@ export type AccountState =
   | "DISABLED";
 
 export interface Account {
+  preferred?: boolean;
+  priorityWeight?: number;
   maxConcurrency?: number;
   activeJobCount?: number;
   externalTaskCount?: number;

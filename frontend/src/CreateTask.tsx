@@ -25,7 +25,7 @@ export const CreateJob = memo(function CreateJob(props: CreateJobProps) {
   const [activeMode, setActiveMode] = useState<WorkspaceMode>(initialMode);
   const appliedRevision = useRef(props.requestRevision);
   const [visited, setVisited] = useState<WorkspaceMode[]>([initialMode]);
-  const [ttsAudio,setTtsAudio]=useState<{id:string;audio:TtsAudio}>();
+  const [ttsAudio,setTtsAudio]=useState<{id:string;audio:TtsAudio;target:"digital-human"|"h3-mv"}>();
   const [batch, setBatch] = useState<CreateBatchItem[]>(() => {
     const saved = readSaved("rh-runner.batch.v1");
     return mergeSavedBatches(saved, readSaved("rh-runner.mv-segments.v1.batch"));
@@ -123,14 +123,14 @@ export const CreateJob = memo(function CreateJob(props: CreateJobProps) {
     <button type="button" className="module-scroll" aria-label="向右查看模块" disabled={!tabScroll.right} onClick={() => tabsRef.current?.scrollBy({ left: 240, behavior: "smooth" })}><ChevronRight size={16}/></button>
     </div>
     {visited.filter(mode => mode !== "personal" || hasPersonalWorkflows).map(mode => <div key={mode} hidden={activeMode !== mode} className="create-mode-panel">
-      {mode === "gemini-tts" ? <GeminiTts active={props.active!==false && activeMode===mode} onSend={audio=>{setTtsAudio({id:crypto.randomUUID(),audio});switchMode("digital-human");}}/> : mode === "h3-mv" ? (() => {
+      {mode === "gemini-tts" ? <GeminiTts active={props.active!==false && activeMode===mode} onSend={(audio,target)=>{setTtsAudio({id:crypto.randomUUID(),audio,target});switchMode(target);}}/> : mode === "h3-mv" ? (() => {
         const workflow = props.workflows.find(w => createModeForWorkflow(w) === "h3-mv");
-        return workflow ? <MvWorkspace workflow={workflow} batch={batch} setBatch={setBatch}
+        return workflow ? <MvWorkspace workflow={workflow} batch={batch} setBatch={setBatch} ttsAudio={ttsAudio?.target==="h3-mv"?ttsAudio:undefined}
           editRequest={editRequest?.draft.workflowId === workflow.id ? editRequest : undefined}
           initialDraft={props.initialDraft?.workflowId === workflow.id ? props.initialDraft : undefined}
           submitting={submitting} submissionLock={submissionLock} /> : <p>MV 工作流未加载，请重启桌面端。</p>;
       })() : <CreateWorkspace {...props} activeMode={mode}
-        ttsAudio={mode==="digital-human"?ttsAudio:undefined}
+        ttsAudio={mode==="digital-human"&&ttsAudio?.target==="digital-human"?ttsAudio:undefined}
         initialWorkflowId={mode === initialMode ? props.initialWorkflowId : undefined}
         initialDraft={mode === initialMode ? props.initialDraft : undefined}
         batch={batch} setBatch={setBatch} submitting={submitting} setSubmitting={setSubmitting} submissionLock={submissionLock}

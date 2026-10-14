@@ -5,6 +5,8 @@ export type ViewId = "overview" | "accounts" | "workflows" | "create" | "jobs";
 
 
 export interface AccountView {
+  preferred?: boolean;
+  priorityWeight?: number;
   maxConcurrency?: number;
   activeJobCount?: number;
   externalTaskCount?: number;

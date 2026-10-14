@@ -1,6 +1,12 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("runningHub", {
+  clipboard: { writeText: text => ipcRenderer.invoke("clipboard:writeText", text) },
+  proxy: {
+    settings: () => ipcRenderer.invoke("proxy:settings"),
+    save: input => ipcRenderer.invoke("proxy:save", input),
+    test: input => ipcRenderer.invoke("proxy:test", input),
+  },
   skills: {
     settings: id => ipcRenderer.invoke('skills:settings',id),
     select: (id,skillId) => ipcRenderer.invoke('skills:select',id,skillId),
@@ -22,6 +28,7 @@ contextBridge.exposeInMainWorld("runningHub", {
     copyKeysUrl: () => ipcRenderer.invoke("gemini:copyKeysUrl"),
   },
   accounts: {
+    setPriority: (id, preferred) => ipcRenderer.invoke("accounts:setPriority", id, preferred),
     setConcurrency: (id, value) => ipcRenderer.invoke("accounts:setConcurrency", id, value),
     list: () => ipcRenderer.invoke("accounts:list"),
     add: input => ipcRenderer.invoke("accounts:add", input),

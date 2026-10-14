@@ -19,9 +19,9 @@ export default function Accounts({ accounts, refreshing, onRefresh, onRefreshAll
     <PageHeading eyebrow="账号管理" title="账号池" description="按账号实际权益设置最大并发，默认 1；降低并发不会中断正在运行的任务。" action={<div className="account-heading-actions"><button className="secondary" onClick={onCopyApiKeysUrl}><Link2 size={16} />复制 API 密钥页面链接</button><button className="secondary" onClick={onRefreshAll} disabled={Boolean(refreshing)}>{refreshing === "all" ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}检测全部</button><button className="primary" onClick={onAdd}><Plus size={17} />添加账号</button></div>} />
     <Feedback message={concurrencyError} onClose={()=>setConcurrencyError("")}/>
     <div className="panel table-panel">
-      <div className="table-toolbar account-toolbar"><div className="toolbar-note"><AlertTriangle size={16} />API Key 已通过系统加密保存在本机</div></div>
+      <div className="table-toolbar account-toolbar"><div className="toolbar-note"><AlertTriangle size={16} />优先账号自动轮流使用；满额、冷却或不可用时使用其他账号。</div></div>
       <div className="data-table account-table">
-        <div className="table-header"><span>账号</span><span>状态</span><span>RH 币</span><span>并发</span><span>最近检测</span><span>操作</span></div>
+        <div className="table-header"><span>账号</span><span>状态</span><span>RH 币</span><span>并发</span><span>优先使用</span><span>最近检测</span><span>操作</span></div>
         {accounts.map(account => <div className="table-row" key={account.id}>
           <div className="identity"><div><strong>{account.label}</strong><small>{account.id}</small></div></div>
           <AccountPill state={account.state} remoteTaskCount={account.remoteTaskCount} />
@@ -33,6 +33,7 @@ export default function Accounts({ accounts, refreshing, onRefresh, onRefreshAll
             {!!((account.activeJobCount??0)+(account.externalTaskCount??0)) && <small title={`本机占用 ${account.activeJobCount??0}，远端其他占用 ${account.externalTaskCount??0}`}>占用 {(account.activeJobCount??0)+(account.externalTaskCount??0)}/{account.maxConcurrency??1}</small>}
           </div>
 
+          <div className="account-priority"><button type="button" className={`switch ${account.preferred?"checked":""}`} aria-label={`${account.label} 优先使用`} aria-pressed={!!account.preferred} disabled={!!savingConcurrency||!window.runningHub} onClick={async()=>{setSavingConcurrency(account.id);try{await window.runningHub!.accounts.setPriority(account.id,!account.preferred);}catch(e){setConcurrencyError(String(e));}finally{setSavingConcurrency(undefined);}}}><span/></button></div>
           <span className="muted">{relativeTime(account.lastCheckedAt)}</span>
           <div className="row-actions"><button className="icon-button" onClick={() => onRefresh(account.id)} disabled={Boolean(refreshing)} title="检测账号">{refreshing === account.id ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}</button><button className="icon-button" onClick={() => onRekey(account)} disabled={Boolean(account.currentJobId)} title={account.currentJobId ? "当前账号正在执行任务，不能更换 API Key" : "重新录入 API Key"}><KeyRound size={16} /></button><button className={`switch ${account.enabled ? "checked" : ""}`} onClick={() => onToggle(account.id)} disabled={Boolean(account.currentJobId)} title={account.currentJobId ? "当前账号正在执行任务，请任务结束后再停用" : undefined} aria-label={account.enabled ? "停用账号" : "启用账号"}><span /></button><button className="icon-button danger" onClick={() => onRemove(account.id)} title="删除账号"><Trash2 size={16} /></button></div>
         </div>)}

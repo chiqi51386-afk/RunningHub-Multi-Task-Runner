@@ -243,7 +243,7 @@ export class Scheduler {
           const candidates = this.accounts.list().filter(account => account.enabled && !account.manualDisabled && (account.activeJobCount ?? 0) < (account.maxConcurrency ?? 1) &&
             (["UNCHECKED", "REMOTE_BUSY", "BUSY", "TEMP_UNAVAILABLE", "NO_BALANCE", "INVALID_KEY"].includes(account.state) ||
               (account.state === "COOLDOWN" && (account.cooldownUntil ?? 0) <= Date.now())));
-          const staleCandidates = candidates.filter(account => this.accountProbeDue(account));
+          const staleCandidates = candidates.filter(account => this.accountProbeDue(account)).sort((a,b)=>Number(!!b.preferred)-Number(!!a.preferred)||(a.lastUsedAt??0)-(b.lastUsedAt??0));
           if (staleCandidates.length) {
             // Probe one account at a time and dispatch immediately when one
             // recovers. Do not make the first job wait for a full pool scan.
@@ -268,6 +268,10 @@ export class Scheduler {
         // lazily and each one can claim a job as soon as its own check passes.
         // This keeps dispatch latency proportional to the number of queued
         // jobs, rather than to the total number of configured API keys.
+        // Refresh eligible preferred accounts first; never let a stale snapshot
+        // silently move them behind a fresh ordinary account.
+        for(const account of available.filter(a=>a.preferred&&!this.accounts.isFresh(a)))await this.accounts.refresh(account.id);
+        available=this.availableAccounts();
         const fresh = available.filter(account => this.accounts.isFresh(account));
         let claimedAny = this.claimJobs(fresh);
         if (this.db.pendingCount() > 0) {
@@ -288,15 +292,23 @@ export class Scheduler {
 
   private claimJobs(accounts: ReturnType<AccountPool["list"]>): boolean {
     let claimedAny = false;
-    for (const account of accounts) {
+    for (const preferred of [true,false]) {
+      let group=accounts.filter(account=>!!account.preferred===preferred);
+      do {
+      const claimed=[];
+      for(const account of group){
       if (!this.running || this.db.pendingCount() === 0) break;
       const job = this.db.claimNextJob(account.id);
       if (!job) continue;
+      claimed.push(account);
       claimedAny = true;
       this.events.emit("account.updated", this.db.getAccount(account.id)!);
       this.events.emit("job.updated", job);
       this.events.emit("queue.updated", this.db.pendingCount());
       this.launch(job.id);
+      }
+      group=claimed;
+      } while(preferred && group.length && this.running && this.db.pendingCount()>0);
     }
     return claimedAny;
   }

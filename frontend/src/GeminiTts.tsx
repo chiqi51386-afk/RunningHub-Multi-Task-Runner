@@ -12,7 +12,7 @@ function initialInput():TtsInput{
     voice:TTS_VOICES.some(v=>v[0]===saved?.voice)?saved!.voice!:"Erinome"};
 }
 
-export function GeminiTts({onSend,active}:{onSend:(audio:TtsAudio)=>void;active:boolean}){
+export function GeminiTts({onSend,active}:{onSend:(audio:TtsAudio,target:"digital-human"|"h3-mv")=>void;active:boolean}){
   const [input,setInput]=useState<TtsInput>(initialInput);
   const [result,setResult]=useState<TtsAudio>();
   const [sample,setSample]=useState<TtsAudio>();
@@ -48,16 +48,16 @@ export function GeminiTts({onSend,active}:{onSend:(audio:TtsAudio)=>void;active:
   return <section className="tts-workspace">
     <div className="tts-options">
       <label className="parameter-field"><span className="field-label">语言</span><Select aria-label="配音语言" value={input.language} disabled={!!busy} onChange={e=>{update({language:e.target.value});setSample(undefined);}}>{TTS_LANGUAGES.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</Select></label>
-      <label className="parameter-field"><span className="field-label">音色</span><Select aria-label="配音音色" value={input.voice} disabled={!!busy} onChange={e=>{update({voice:e.target.value});setSample(undefined);}}>{TTS_VOICES.map(([id,gender,description])=><option key={id} value={id}>{id} · {gender} · {TTS_VOICE_DETAILS[id]?.age??description}</option>)}</Select></label>
+      <label className="parameter-field"><span className="field-label">音色</span><Select aria-label="配音音色" value={input.voice} disabled={!!busy} onChange={e=>{update({voice:e.target.value});setSample(undefined);}}>{TTS_VOICES.map(([id,gender,description])=><option key={id} value={id}>{gender} · {description} — {id}</option>)}</Select></label>
       <button type="button" className="secondary-button" disabled={!!busy} onClick={()=>void generate(true)}>{busy==="sample"?"试听生成中…":"试听音色"}</button>
     </div>
-    <p className="tts-voice-description">{TTS_VOICE_DETAILS[input.voice]?.description}</p>
+    <p className="tts-voice-description">{TTS_VOICE_DETAILS[input.voice]?.description.split('，适合')[0].replace(/。$/, '')}</p>
     {sample&&<audio className="tts-sample" ref={samplePlayer} key={sample.previewUrl} src={sample.previewUrl} controls autoPlay={active} onPlay={()=>resultPlayer.current?.pause()}/>}
     <div className="parameter-field"><div className="tts-text-heading"><label htmlFor="tts-transcript" className="field-label">配音文本</label><button type="button" className="secondary-button" disabled={!!busy||(!input.text&&!input.style)} onClick={()=>{update({text:"",style:""});setError(undefined);}}>清空文本</button></div><textarea id="tts-transcript" aria-label="配音文本" className="tts-text" value={input.text} disabled={!!busy} maxLength={12000} placeholder="输入需要朗读的文字…" onChange={e=>update({text:e.target.value})}/></div>
     <label className="parameter-field"><span className="field-label">风格指令</span><textarea aria-label="风格指令" className="tts-style" value={input.style} disabled={!!busy} maxLength={1500} placeholder="可选，例如：温柔、带一点悲伤，语速稍慢，像在安慰亲人。" onChange={e=>update({style:e.target.value})}/></label>
     <Feedback message={error} onClose={()=>setError(undefined)}/>
     <Feedback message={notice} tone="success" onClose={()=>setNotice(undefined)}/>
     <div className="tts-actions"><button type="button" className="primary-button" disabled={!!busy||!input.text.trim()} onClick={()=>void generate(false)}>{busy==="generate"?"正在生成音频…":"生成音频"}</button>{(busy==="generate"||busy==="sample")&&<button type="button" className="secondary-button" onClick={()=>{if(request.current)void window.runningHub?.tts.cancel(request.current).catch(()=>setError("取消失败，请重试。"));}}>取消</button>}</div>
-    {result&&<div className="tts-result"><audio ref={resultPlayer} key={result.previewUrl} src={result.previewUrl} controls preload="metadata" onPlay={()=>samplePlayer.current?.pause()}/><div className="tts-actions"><button type="button" className="primary-button" disabled={!!busy} onClick={()=>{resultPlayer.current?.pause();onSend(result);}}>发送到数字人</button><button type="button" className="secondary-button" disabled={!!busy} onClick={()=>void save()}>保存音频</button></div></div>}
+    {result&&<div className="tts-result"><audio ref={resultPlayer} key={result.previewUrl} src={result.previewUrl} controls preload="metadata" onPlay={()=>samplePlayer.current?.pause()}/><div className="tts-actions"><button type="button" className="primary-button" disabled={!!busy} onClick={()=>{resultPlayer.current?.pause();onSend(result,"digital-human");}}>发送到 Inf数字人</button><button type="button" className="primary-button" disabled={!!busy} onClick={()=>{resultPlayer.current?.pause();onSend(result,"h3-mv");}}>发送到 H3数字人</button><button type="button" className="secondary-button" disabled={!!busy} onClick={()=>void save()}>保存音频</button></div></div>}
   </section>;
 }

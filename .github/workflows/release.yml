@@ -113,5 +113,5 @@ jobs:
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-source.zip
             release-build/SHA256SUMS.txt
-          body_path: RELEASE_NOTES_v1.1.0.md
+          body_path: RELEASE_NOTES_v1.1.1.md
           name: RunningHub Runner ${{ env.RELEASE_TAG }}

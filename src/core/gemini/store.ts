@@ -22,6 +22,8 @@ export class GeminiStore {
       enabled INTEGER NOT NULL DEFAULT 1, state TEXT NOT NULL DEFAULT 'unchecked',
       retry_at INTEGER, last_checked_at INTEGER, last_error TEXT, last_used_at INTEGER
     ); CREATE TABLE IF NOT EXISTS gemini_director_settings (id INTEGER PRIMARY KEY CHECK(id=1), skill_id TEXT NOT NULL); CREATE TABLE IF NOT EXISTS gemini_preferences (id INTEGER PRIMARY KEY CHECK(id=1), optimization_enabled INTEGER NOT NULL DEFAULT 0); CREATE TABLE IF NOT EXISTS gemini_settings (id INTEGER PRIMARY KEY CHECK(id=1), model TEXT NOT NULL);`);
+    // Google routes the retired selector alias to 3.8; make the saved choice explicit.
+    db.prepare("UPDATE gemini_settings SET model='gemini-3.8-flash' WHERE model='gemini-3.7-flash'").run();
   }
   setOptimizationEnabled(enabled: unknown): GeminiSettings {
     if(typeof enabled!=="boolean")throw new Error("无效的优化开关。");
@@ -34,6 +36,7 @@ export class GeminiStore {
     return { optimizationEnabled: preference?.optimization_enabled===1, model: row?.model ?? DEFAULT_GEMINI_MODEL, keys: this.list() };
   }
   setModel(value: unknown): GeminiSettings {
+    if (value === "gemini-3.7-flash") value = "gemini-3.8-flash";
     if (typeof value !== "string" || !/^gemini-[A-Za-z0-9._-]{1,100}$/.test(value.trim())) throw new Error("请输入有效的 Gemini 模型名称。");
     this.db.prepare("INSERT INTO gemini_settings(id,model) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET model=excluded.model").run(value.trim());
     return this.settings();

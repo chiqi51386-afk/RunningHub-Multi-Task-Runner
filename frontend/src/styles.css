@@ -135,7 +135,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .data-table { overflow-x: auto; }
 .table-header, .table-row { min-width: 760px; display: grid; grid-template-columns: 1.6fr .8fr .6fr .8fr 170px; align-items: center; gap: 15px; padding: 13px 18px; }
 .table-header { color: var(--muted); background: var(--panel); font: 500 10px/1 "JetBrains Mono", monospace; letter-spacing: .06em; text-transform: uppercase; }
-.account-table .table-header, .account-table .table-row { grid-template-columns: minmax(160px,1.6fr) minmax(90px,.8fr) minmax(60px,.6fr) 88px minmax(85px,.8fr) 170px; min-width: 830px; }
+.account-table .table-header, .account-table .table-row { grid-template-columns: minmax(140px,1.6fr) minmax(90px,.8fr) minmax(60px,.6fr) 88px 110px minmax(85px,.8fr) 170px; min-width: 930px; }
+.account-priority { display:flex; align-items:center; gap:8px; }
+.account-priority .app-select { min-width:56px; }
 .account-concurrency { display: flex; flex-direction: column; align-items: stretch; gap: 5px; width: 80px; }
 .account-concurrency .app-select { width: 100%; min-width: 0; }
 .account-concurrency .app-select > button { min-height: 32px; padding: 5px 9px; font-size: 12px; }
@@ -359,7 +361,18 @@ label > svg { position: absolute; right: 12px; bottom: 13px; color: var(--muted)
 .segmented button { min-height: 31px; padding: 0 11px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; cursor: pointer; font-size: 11px; }
 .segmented button.active { color: var(--text); background: var(--panel-2); box-shadow: none; }
 .job-list { display: grid; }
-.virtual-job-list { height: min(65vh, 900px); min-height: 300px; overflow-y: auto; overflow-anchor: none; scrollbar-gutter: stable; }
+.virtual-job-list { height: 100%; min-height: 0; overflow-y: auto; overflow-anchor: none; scrollbar-gutter: stable; }
+.jobs-page { height: calc(100dvh - 68px); display: flex; flex-direction: column; min-height: 0; box-sizing: border-box; }
+.jobs-page > .page-heading { flex: none; }
+.jobs-page .jobs-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.jobs-page .jobs-toolbar { flex: none; }
+.jobs-page .job-list { flex: 1; min-height: 0; }
+.proxy-fields { display: grid; grid-template-columns: 110px minmax(0,1fr) 100px; gap: 12px; margin-top: 14px; }
+.proxy-fields input { width: 100%; min-width: 0; }
+@media (max-width: 560px) { .proxy-fields { grid-template-columns: 1fr; } }
+.output-preview-modal.task-preview-modal { display: flex; flex-direction: column; overflow: hidden; }
+.task-preview-modal > .modal-head, .task-preview-modal > .preview-section-tabs, .task-preview-modal > .modal-actions { flex: none; }
+.task-preview-modal > .task-inputs, .task-preview-modal > .task-outputs { min-height: 0; overflow: auto; }
 .job-row { min-height: 108px; padding: 13px 17px; display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 13px; border-top: 1px solid var(--line-soft); }
 .job-row:first-child { border-top: 0; }
 .job-row.compact { min-height: 82px; padding: 10px; border: 0; border-bottom: 1px solid var(--line-soft); border-radius: 0; grid-template-columns: 42px minmax(0, 1fr); background: var(--panel); }

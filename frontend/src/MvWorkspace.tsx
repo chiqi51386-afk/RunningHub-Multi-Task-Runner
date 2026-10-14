@@ -7,10 +7,13 @@ import { MediaField, ParameterField } from "./MediaFields";
 import { cloneDraft, exchangeImages, setDraftMedia, visibleMedia, taskOptimizationEnabled } from "./task-draft";
 import { isSavedDraft, readSaved, serializeDraft, restoreDraft } from "./draft-storage";
 import { applyMvShared, mvParameter, newMvDraft, prepareMvBatch } from "./mv-draft";
+import { applyTtsAudio } from "./task-draft";
+import type { TtsAudio } from "../../src/core/gemini/ttsTypes";
 
 type Segment = { id: string; draft: CreateJobDraft; slots: number };
 import type { CreateBatchItem } from "./production-batch";
 type Props = {
+  ttsAudio?: {id:string;audio:TtsAudio};
   workflow: WorkflowView; initialDraft?: CreateJobDraft;
   batch: CreateBatchItem[]; setBatch: React.Dispatch<React.SetStateAction<CreateBatchItem[]>>;
   editRequest?: CreateBatchItem;
@@ -18,7 +21,7 @@ type Props = {
   submitting: "single" | "batch" | null;
 };
 const storageKey = "rh-runner.mv-segments.v1";
-export function MvWorkspace({ workflow, initialDraft, batch, setBatch, editRequest, submissionLock, submitting }: Props) {
+export function MvWorkspace({ workflow, initialDraft, batch, setBatch, editRequest, submissionLock, submitting, ttsAudio }: Props) {
   const makeSegment = (draft: CreateJobDraft): Segment => ({ id: crypto.randomUUID(), draft: cloneDraft(draft), slots: 2 });
   const [segments, setSegments] = useState<Segment[]>(() => {
     if (initialDraft) return [makeSegment(initialDraft)];
@@ -46,6 +49,15 @@ export function MvWorkspace({ workflow, initialDraft, batch, setBatch, editReque
   const [storageError, setStorageError] = useState<string>();
   const [picking, setPicking] = useState(false);
   const pickerLock = useRef(false);
+  const appliedTts = useRef<string | undefined>(undefined);
+  useEffect(()=>{
+    if(!ttsAudio || appliedTts.current===ttsAudio.id || submitting)return;
+    try {
+      const nextShared=applyTtsAudio(shared,workflow,ttsAudio.audio);
+      const nextSegments=segments.map(segment=>({...segment,draft:applyTtsAudio(segment.draft,workflow,ttsAudio.audio)}));
+      setShared(nextShared);setSegments(nextSegments);appliedTts.current=ttsAudio.id;
+    }catch(reason){setError(reason instanceof Error?reason.message:"音频填入失败");}
+  },[ttsAudio,submitting,workflow]);
   useEffect(() => {
     if (!editRequest || applied.current === editRequest) return;
     applied.current = editRequest;
@@ -212,11 +224,11 @@ export function MvWorkspace({ workflow, initialDraft, batch, setBatch, editReque
           const startValue = segment.draft.parameterValues[start.id], durationValue = segment.draft.parameterValues[duration.id];
           const end = typeof startValue === "number" && typeof durationValue === "number" ? Number((startValue + durationValue).toFixed(2)) : "";
           return <>
-            <label className="parameter-field"><span className="field-label">音频起点（秒）</span><input aria-label={`第 ${index + 1} 段音频起点`} type="number" min={0} step={0.01} value={typeof startValue === "number" ? startValue : ""} onChange={e => {
+            <label className="parameter-field"><span className="field-label">音频起点（秒）</span><input aria-label={`第 ${index + 1} 段音频起点`} type="number" min={0} step={1} value={typeof startValue === "number" ? startValue : ""} onChange={e => {
               const value = e.target.value === "" ? "" : Number(e.target.value);
               change(segment.id, d => ({ ...d, parameterValues: { ...d.parameterValues, [start.id]: value, [duration.id]: typeof value === "number" && typeof end === "number" ? Number((end - value).toFixed(2)) : "" } }));
             }} /></label>
-            <label className="parameter-field"><span className="field-label">音频结束（秒）</span><input aria-label={`第 ${index + 1} 段音频结束`} type="number" min={0} step={0.01} value={end} onChange={e => {
+            <label className="parameter-field"><span className="field-label">音频结束（秒）</span><input aria-label={`第 ${index + 1} 段音频结束`} type="number" min={0} step={1} value={end} onChange={e => {
               const value = e.target.value === "" ? "" : Number(e.target.value);
               change(segment.id, d => ({ ...d, parameterValues: { ...d.parameterValues, [duration.id]: typeof value === "number" && typeof startValue === "number" ? Number((value - startValue).toFixed(2)) : "" } }));
             }} /></label>
