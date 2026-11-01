@@ -1,3 +1,5 @@
+For normal AI operation, use `/workspace` and the included `MODULE_GUIDE.md`. Desktop draft and segment logic is shared in `src/core/drafts`; no UI is installed. Raw `/jobs` endpoints below remain for compatibility.
+
 # RH Runner Cloud (Linux)
 
 Headless service. No Electron, web frontend, whitebox preview or proxy configuration.
@@ -68,7 +70,15 @@ GET responses include parameter snapshots, original/optimized text, statuses and
 | POST /tts/:requestId/cancel | Cancel local TTS request |
 
 Fetch workflows first. Each submitted job uses `{workflowId,taskName,parameters:{parameterId:value},
-media:[{parameterId,localPath}],optimize:true,instanceType:"default"}`.
+media:[{parameterId,localPath}],optimize:true}`.
+H3 resolution defaults to 1.5 MP. Explicit resolution choices are preserved. When instanceType is omitted,
+Plus is selected above 15 seconds at 0.9 MP, 13 seconds at 1.5 MP, or 12 seconds at 2.0 MP.
+An explicit instanceType remains authoritative; other resolutions require an explicit choice.
+H3 digital-human jobs accept `audioRange:{startSeconds:0,endSeconds:24}`. Omit the range for the full audio
+rounded up to whole seconds; omit only endSeconds for the remaining audio. Explicit segment boundaries stay unchanged.
+Legacy duration (start) / duration_2 (length) are supported but cannot be combined with audioRange.
+Audio uploads return durationSeconds and suggestedEndSeconds. POST /jobs/preview with one job resolves
+the same final parameters without creating a task or calling a generation API.
 H3 optimization defaults to enabled. Use `optimize:false` for already-prepared prompts. H3 segment jobs share
 `production:{groupId:"unique-group",segmentIndex:1}` with consecutive indices.
 Media must be under the data `uploads/` or `tts/` directory. Generated TTS paths can directly feed Inf/H3 audio slots.

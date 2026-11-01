@@ -1,3 +1,5 @@
+> 日常任务使用 [模块操作指南](MODULE_GUIDE.md) 的 /workspace 接口；本文底层参数示例仅用于兼容。
+
 # 视频任务使用方法 — 从一句需求到成片交付
 
 本手册是视频生成的操作入口（原理见 `ANALYSIS.md`，账号与 TTS 细节见 `AGENT_GUIDE.md`）。目标：正确、不重复提交地完成需求确认 → 提交 → 生成 → 下载 → 交付。
@@ -39,7 +41,7 @@
 - **素材**：首尾帧、人物图、参考图、音频是否齐备；使用 TTS 时确认文字、语言与音色。
 - **授权**：是否立即生成；缺关键素材或生成授权不明时先确认。
 
-缺省：1 条；H3 首尾帧 4 秒、`9:16 (Portrait Widescreen)`、1.5 MP；数字人 MV 音频起点 0 秒、片段 10 秒、分辨率固定 1.5 MP（所有者定版，覆盖出厂默认 2.0）；SelfLift 10 秒、分辨率按档位选（720→0.9 / 1080→2.0）。InfiniTalk 成片长度由音频长度决定，且始终不开 Plus。
+缺省：1 条；H3 首尾帧 4 秒、`9:16 (Portrait Widescreen)`、1.5 MP；数字人 MV 音频起点 0 秒、结束默认音频总时长向上取整；所有有分辨率参数的内置工作流默认 1.5 MP，明确选择档位时才使用 720→0.9 / 1080→2.0；SelfLift 默认 10 秒。InfiniTalk 成片长度由音频长度决定，且始终不开 Plus。
 
 **生成词优化默认全开**：有优化映射的工作流（首尾帧、MV、SelfLift）提交时自动先用 Gemini 优化生成词，不需要填 `optimize`；只有用户明确要求不优化时才填 `"optimize": false`。InfiniTalk 没有优化功能，不受影响。优化失败时任务会直接失败且不提交视频（见第 8 节），要如实反馈用户。
 
@@ -96,7 +98,7 @@ cli POST /jobs --file job.json
 
 **适用：**让同一城市机位的白天画面平滑过渡到夜晚。
 
-**准备：**同机位白天首帧、夜晚尾帧；确认竖屏、10 秒、固定 1.5 MP、生成 1 份。
+**准备：**同机位白天首帧、夜晚尾帧；确认竖屏、10 秒、默认 1.5 MP、生成 1 份。
 
 **步骤：**上传白天图取得 `<U1>`、夜晚图取得 `<U2>`，提交：
 
@@ -104,7 +106,7 @@ cli POST /jobs --file job.json
 {"requestId":"video-city-20261031-001","jobs":[{"workflowId":"builtin:h3-first-last.rhworkflow.json","taskName":"城市昼夜-01","parameters":{"duration":10,"aspect_ratio":"9:16 (Portrait Widescreen)","resolution":1.5,"prompt":"固定机位，城市从白天平滑过渡到夜晚，楼宇灯光依次亮起，保持建筑结构，不加文字。"},"media":[{"parameterId":"image","localPath":"<U1>"},{"parameterId":"image_2","localPath":"<U2>"}],"instanceType":"default"}]}
 ```
 
-**参数规则：**首尾帧固定 `resolution:1.5`；10 秒未超过 13 秒，不开 Plus。
+**参数规则：**此例首尾帧使用默认 `resolution:1.5`；10 秒未超过 13 秒，不开 Plus。
 
 **等待与验收：**拿到 1 条视频，检查约 10 秒、首尾对应、建筑不乱变。
 
@@ -151,7 +153,7 @@ cli GET /tts/tts-guide-20261031-001
 {"requestId":"video-tts-20261031-001","jobs":[{"workflowId":"builtin:infinitetalk-digital-human.rhworkflow.json","taskName":"配音数字人-01","parameters":{"prompt":"人物面向镜头自然介绍，口型同步，表情友好，保持人物身份稳定。"},"media":[{"parameterId":"image","localPath":"<U1>"},{"parameterId":"audio","localPath":"<T>"}],"instanceType":"default"}]}
 ```
 
-**参数规则：**InfiniTalk 时长由 WAV 实际长度决定，无 `resolution`、无优化、始终不开 Plus。若改用 MV，须按音频实际秒数确定 `duration_2`，并保证音频覆盖 `duration + duration_2`。
+**参数规则：**InfiniTalk 时长由 WAV 实际长度决定，无 `resolution`、无优化、始终不开 Plus。若改用 MV，默认自动读取音频总时长并向上取整；指定片段使用 `audioRange`。
 
 **等待与验收：**先取得并确认 WAV，再等待 1 条视频下载完成；检查有声、无截断、口型同步。
 
@@ -159,15 +161,15 @@ cli GET /tts/tts-guide-20261031-001
 
 **适用：**人物随指定歌曲片段表演，音频从第 5 秒开始截取。
 
-**准备：**人物图、获授权歌曲；音频实际长度至少 15 秒。确认竖屏、固定 1.5 MP、生成 1 份。
+**准备：**人物图、获授权歌曲；音频实际长度至少 15 秒。确认竖屏、默认 1.5 MP、生成 1 份。
 
 **步骤：**人物图上传取得 `<U1>`，歌曲上传取得 `<U2>`，提交：
 
 ```json
-{"requestId":"video-mv-20261031-001","jobs":[{"workflowId":"builtin:h3-digital-human-mv.rhworkflow.json","taskName":"歌曲片段-01","parameters":{"duration":5,"duration_2":10,"aspect_ratio":"9:16 (Portrait Widescreen)","resolution":1.5,"prompt":"人物随歌曲自然演唱，口型配合音频，轻微律动，镜头稳定，保持人物身份。"},"media":[{"parameterId":"image","localPath":"<U1>"},{"parameterId":"audio","localPath":"<U2>"}],"instanceType":"default"}]}
+{"requestId":"video-mv-20261031-001","jobs":[{"workflowId":"builtin:h3-digital-human-mv.rhworkflow.json","taskName":"歌曲片段-01","audioRange":{"startSeconds":5,"endSeconds":15},"parameters":{"aspect_ratio":"9:16 (Portrait Widescreen)","resolution":1.5,"prompt":"人物随歌曲自然演唱，口型配合音频，轻微律动，镜头稳定，保持人物身份。"},"media":[{"parameterId":"image","localPath":"<U1>"},{"parameterId":"audio","localPath":"<U2>"}],"instanceType":"default"}]}
 ```
 
-**参数规则：**`duration:5` 是音频起点，`duration_2:10` 才是成片时长；必须覆盖 5＋10 秒。分辨率固定 1.5，片段未超过 13 秒，不开 Plus。
+**参数规则：**`audioRange` 起点 5、结束 15，软件自动计算片段时长 10 秒。分辨率默认 1.5，片段未超过 13 秒，不开 Plus。
 
 **等待与验收：**拿到 1 条约 10 秒 MV，核对声音确实从歌曲第 5 秒开始，而非开头。
 
@@ -175,7 +177,7 @@ cli GET /tts/tts-guide-20261031-001
 
 **适用：**同一城市昼夜需求要 3 个结果供用户挑选。
 
-**准备：**白天图、夜晚图；确认每份 10 秒、竖屏、固定 1.5 MP，生成数量为 3。
+**准备：**白天图、夜晚图；确认每份 10 秒、竖屏、默认 1.5 MP，生成数量为 3。
 
 **步骤：**两图各上传一次，分别取得 `<U1>`、`<U2>`；以下整份 JSON 只提交一次：
 
@@ -183,7 +185,7 @@ cli GET /tts/tts-guide-20261031-001
 {"requestId":"video-city3-20261031-001","jobs":[{"workflowId":"builtin:h3-first-last.rhworkflow.json","taskName":"城市昼夜-01","parameters":{"duration":10,"aspect_ratio":"9:16 (Portrait Widescreen)","resolution":1.5,"prompt":"固定机位，城市白天平滑转为夜晚，灯光依次亮起，保持建筑结构。"},"media":[{"parameterId":"image","localPath":"<U1>"},{"parameterId":"image_2","localPath":"<U2>"}],"instanceType":"default"},{"workflowId":"builtin:h3-first-last.rhworkflow.json","taskName":"城市昼夜-02","parameters":{"duration":10,"aspect_ratio":"9:16 (Portrait Widescreen)","resolution":1.5,"prompt":"固定机位，城市白天平滑转为夜晚，灯光依次亮起，保持建筑结构。"},"media":[{"parameterId":"image","localPath":"<U1>"},{"parameterId":"image_2","localPath":"<U2>"}],"instanceType":"default"},{"workflowId":"builtin:h3-first-last.rhworkflow.json","taskName":"城市昼夜-03","parameters":{"duration":10,"aspect_ratio":"9:16 (Portrait Widescreen)","resolution":1.5,"prompt":"固定机位，城市白天平滑转为夜晚，灯光依次亮起，保持建筑结构。"},"media":[{"parameterId":"image","localPath":"<U1>"},{"parameterId":"image_2","localPath":"<U2>"}],"instanceType":"default"}]}
 ```
 
-**参数规则：**一个 requestId、一次 POST、jobs 三项；不是提交三次。每项固定 1.5，10 秒不开 Plus。
+**参数规则：**一个 requestId、一次 POST、jobs 三项；不是提交三次。每项默认 1.5，10 秒不开 Plus。
 
 **等待与验收：**分别跟踪三个 jobId，下载得到 3 条成片，保留编号对应关系；部分失败不能整批重提。
 
@@ -216,11 +218,11 @@ cli GET /tts/tts-guide-20261031-001
 | 工作流 | 参数 |
 | --- | --- |
 | H3 首尾帧 | `duration` 视频时长秒（默认 4）、`aspect_ratio`、`resolution`（默认 1.5 MP）、`prompt`、`seed` |
-| H3 数字人 MV | `duration` **音频起点秒**（默认 0）、`duration_2` **片段时长秒**（默认 10）、`aspect_ratio`、`resolution`（固定 1.5，见下节）、`prompt` |
+| H3 数字人 MV | 顶层 `audioRange` 起点／结束（省略则完整音频向上取整）；兼容旧 `duration` 起点、`duration_2` 时长、`aspect_ratio`、`resolution`（默认 1.5，见下节）、`prompt` |
 | InfiniTalk | `prompt`、`negative_prompt`（无特殊要求保持默认） |
-| SelfLift（多图参考） | `duration`（默认 10）、`aspect_ratio`、`resolution`（按档位填 0.9 / 2.0）、`prompt` |
+| SelfLift（多图参考） | `duration`（默认 10）、`aspect_ratio`、`resolution`（默认 1.5；主动选档才填 0.9 / 2.0）、`prompt` |
 
-- 时长按用户需求填写；未指定时使用上述默认值，不另设时长规则。MV 两个 duration 不得填反。
+- 时长按用户需求填写；未指定时使用上述默认值。MV 使用 audioRange，避免混淆旧参数。
 - `aspect_ratio` 使用工作流返回的合法选项原文，不把宽高像素填进 `resolution`。
 - 提示词写清主体、动作、场景、镜头、风格与约束。首尾帧重点描述过渡；数字人重点描述身份、表情、动作与镜头。
 
@@ -232,11 +234,10 @@ Plus 由提交参数 `instanceType` 控制：`"default"` 为关闭（默认）�
 | --- | --- | --- |
 | 使用公开 `resolution` 参数的工作流：720 档 | `0.9` | 时长 > 15 秒 |
 | 使用公开 `resolution` 参数的工作流：1080 档 | `2.0` | 时长 > 12 秒 |
-| H3 首尾帧 | 固定 `1.5`，不选档位 | 时长 > 13 秒 |
-| H3 数字人 MV | 固定 `1.5`，不选档位；覆盖出厂默认 `2.0` | 片段时长 `duration_2` > 13 秒 |
+| 全部 H3 默认分辨率 | `1.5`；主动选档时使用对应分辨率 | 时长 > 13 秒 |
 | InfiniTalk | 无此参数，不添加 | **始终不开**（固定 `"default"`，与时长无关） |
 
-提交前按表判断，将 `instanceType` 和适用的 `resolution` 填入 job；未超过阈值（含恰好等于阈值）一律填 `"default"`，超过才填 `"plus"`。时长按用户需求填写，MV 按 `duration_2` 判断，不按音频起点 `duration` 判断。SelfLift（多图参考）走通用档位规则：先选 720（`0.9`，>15 秒开）或 1080（`2.0`，>12 秒开），不适用首尾帧的固定 1.5 口径。
+提交前按表判断，将 `instanceType` 和适用的 `resolution` 填入 job；未超过阈值（含恰好等于阈值）一律填 `"default"`，超过才填 `"plus"`。时长按用户需求填写，MV 按 `duration_2` 判断，不按音频起点 `duration` 判断。所有 H3 默认 1.5（>13 秒开），只有主动选择档位才改为 0.9（>15 秒开）或 2.0（>12 秒开）。省略 instanceType 时后端按同一规则计算；显式填写时保留调用方选择。
 
 高分辨率分块参数 `193_highres_tiling` 默认开启，保持默认，不改动。
 
@@ -267,7 +268,7 @@ requestId 命名：`video-<业务号>-<日期>-<批次>`，如 `video-demo-20261
     "parameters": {
       "duration": 4,
       "aspect_ratio": "9:16 (Portrait Widescreen)",
-      "resolution": 0.92,
+      "resolution": 1.5,
       "prompt": "海面日落自然过渡到星空夜晚，镜头缓慢推进，光线平滑变化。"
     },
     "media": [
@@ -323,3 +324,12 @@ requestId 命名：`video-<业务号>-<日期>-<批次>`，如 `video-demo-20261
 - 服务**每次启动前**会自动检查更新源（systemd 的 ExecStartPre 调用 `scripts/check_update.py`，检查失败绝不阻挡启动）。手动随时可查：`python3 scripts/check_update.py`。
 - 更新源地址通过环境变量 `RH_UPDATE_URL` 或安装目录下的 `update.json`（`{"feed": "https://.../version.json"}`）配置；清单格式为 JSON：`{"version": "1.1.1-distribution.N", "url": "下载地址", "notes": "说明"}`。未配置更新源时检查自动跳过。
 - 检测到新版本时，检查结果写入 `data/update-notice.json` 并在日志里打横幅。**操作者每次开始工作前应查看该文件，有新版本必须提醒用户更新**；用户确认更新后，拿到新包按 install.sh 升级（自动保留 data 并重启服务），再用 `scripts/check_update.py --clear` 清除提醒。
+
+### 数字人音频与无扣费预览
+
+- 上传音频返回 `durationSeconds`（实际时长）及 `suggestedEndSeconds`（向上取整）。
+- H3 数字人不填时长时，从 0 到向上取整的音频末尾，不再默认 10 秒。
+- 分段用顶层 `audioRange: {"startSeconds": 10, "endSeconds": 20}`，与桌面起点／结束相同。显式边界原样保留；最后一段可省略 endSeconds 自动到末尾。
+- 不要同时填写 audioRange 和旧 duration/duration_2。旧字段仍可兼容，不能把结束时间当作时长。
+- `POST /jobs/preview` 传单条 job，返回最终参数、Plus、优化设置，不创建任务、不调用生成 API。确认后将相同输入放入 POST /jobs 的 jobs 数组。
+- InfiniTalk 继续由音频决定时长，不添加不存在的分辨率或分段参数。

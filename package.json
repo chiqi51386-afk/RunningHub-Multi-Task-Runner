@@ -52,6 +52,7 @@
     "@types/node": "^24.5.2",
     "electron": "^44.4.3",
     "electron-builder": "^26.15.3",
+    "music-metadata": "^12.3.3",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   },

@@ -8,8 +8,8 @@ import path from "node:path";
 test("license inventory accepts Windows CRLF but rejects changed dependency content", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "rh-license-test-"));
   try {
-    for (const folder of ["scripts", "frontend", "THIRD_PARTY_LICENSES"]) await mkdir(path.join(dir, folder));
-    for (const file of ["scripts/generate-third-party-licenses.mjs", "package-lock.json", "frontend/package-lock.json", "THIRD_PARTY_LICENSES/NPM_DEPENDENCIES.md"]) {
+    for (const folder of ["scripts", "frontend", "cloud", "THIRD_PARTY_LICENSES"]) await mkdir(path.join(dir, folder));
+    for (const file of ["scripts/generate-third-party-licenses.mjs", "package-lock.json", "frontend/package-lock.json", "cloud/package-lock.json", "THIRD_PARTY_LICENSES/NPM_DEPENDENCIES.md"]) {
       await copyFile(file, path.join(dir, file));
     }
     const inventory = path.join(dir, "THIRD_PARTY_LICENSES/NPM_DEPENDENCIES.md");

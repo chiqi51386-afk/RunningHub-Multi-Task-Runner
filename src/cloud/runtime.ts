@@ -12,6 +12,7 @@ import { resolveMediaInputs } from "../core/workflows/mediaInputs.js";
 import { MV_WORKFLOW_ID, validateMvInput } from "../core/workflows/mvValidation.js";
 import type { CreateJobInput, WorkflowRecord } from "../core/types.js";
 import { CloudSecrets, privateFile } from "./secrets.js";
+import { applyAudioRange, computeTier, H3_IDS, type AudioRange } from "./jobPolicy.js";
 
 export async function cloudRuntime(directory: string, bundleDirectory: string) {
   const root = path.resolve(directory);
@@ -58,11 +59,14 @@ export async function cloudRuntime(directory: string, bundleDirectory: string) {
       }, file => readMedia(file, "audio", signal));
   };
 
-  async function prepare(input: CreateJobInput & { optimize?: boolean }): Promise<CreateJobInput> {
+  async function prepare(input: CreateJobInput & { optimize?: boolean; audioRange?: AudioRange }): Promise<CreateJobInput> {
     const workflow = backend.workflows.get(input.workflowId);
     if (!workflow) throw new Error("Unknown workflow");
     if (input.optimize !== undefined && typeof input.optimize !== "boolean") throw new Error("optimize must be boolean");
     const parameters: Record<string, unknown> = Object.fromEntries(workflow.profile.parameters.map(p => [p.id, p.defaultValue]));
+    if (H3_IDS.has(workflow.runningHubWorkflowId)) for (const p of workflow.profile.parameters) {
+      if (p.classType === "ResolutionSelector" && p.fieldName === "megapixels") parameters[p.id] = 1.5;
+    }
     const ids = new Set(workflow.profile.parameters.map(p => p.id));
     for (const [id, value] of Object.entries(input.parameters ?? {})) {
       if (!ids.has(id)) throw new Error("Unknown parameter: " + id);
@@ -74,7 +78,11 @@ export async function cloudRuntime(directory: string, bundleDirectory: string) {
     const resolved = resolveMediaInputs(workflow.profile, parameters, Object.fromEntries(supplied.map(m => [m.parameterId, { mode: "replace" as const, localPath: m.localPath }])));
     Object.assign(parameters, resolved.parameters);
     const media = resolved.media;
-    if (workflow.runningHubWorkflowId === MV_WORKFLOW_ID) validateMvInput(workflow.profile, parameters, media);
+    if (workflow.runningHubWorkflowId === MV_WORKFLOW_ID) {
+      await applyAudioRange(workflow.profile, parameters, input.parameters ?? {}, media, input.audioRange);
+      validateMvInput(workflow.profile, parameters, media);
+    } else if (input.audioRange !== undefined) throw new Error("audioRange 仅用于 H3 数字人");
+    const instanceType = computeTier(workflow.runningHubWorkflowId, workflow.profile, parameters, input.instanceType);
     const settings = gemini.store.settings();
     // Distribution default (owner's rule): prompt optimization is ON by default
     // for workflows that have an optimization route. Workflows without a route
@@ -84,7 +92,7 @@ export async function cloudRuntime(directory: string, bundleDirectory: string) {
       settings.optimizationEnabled, settings.model);
     const prompt = workflow.profile.parameters.find(p => p.semanticType === "prompt" && p.visible !== false);
     return { workflowId: input.workflowId, taskName: input.taskName, production: input.production, namingRule: input.namingRule,
-      parameters, media, instanceType: input.instanceType, outputDir: backend.config.outputDir,
+      parameters, media, instanceType, outputDir: backend.config.outputDir,
       promptOptimization: selection ? { ...selection, originalText: String(prompt ? parameters[prompt.id] ?? "" : ""),
         skill: skills.snapshot(workflow.runningHubWorkflowId, workflow.runningHubWorkflowId !== "2106994828660080641" && media.length > 0) } : undefined };
   }

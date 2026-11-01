@@ -50,7 +50,7 @@ for folder in scripts smoke; do
   mkdir -p "$DIR/$folder"
   cp -R "$PKG_DIR/$folder/." "$DIR/$folder/"
 done
-cp "$PKG_DIR/AGENT_GUIDE.md" "$PKG_DIR/VIDEO_GUIDE.md" "$DIR/"
+cp "$PKG_DIR/AGENT_GUIDE.md" "$PKG_DIR/VIDEO_GUIDE.md" "$PKG_DIR/MODULE_GUIDE.md" "$DIR/"
 cp "$PKG_DIR/VERSION" "$DIR/"
 # Preserve platform-supplied egress settings, without a software proxy UI.
 python3 - "$DIR/runtime.env" "$DIR/data" "$PORT" <<'PY'

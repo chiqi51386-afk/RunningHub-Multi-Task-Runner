@@ -11,6 +11,8 @@ import { stereoWav } from "../core/gemini/stereoWav.js";
 import { TTS_LANGUAGES, TTS_VOICES } from "../core/gemini/ttsTypes.js";
 import { validateTtsInput } from "../core/gemini/tts.js";
 import type { CloudRuntime } from "./runtime.js";
+import { audioLength } from "./jobPolicy.js";
+import { MODULES, prepareTaskForm } from "./workspace.js";
 
 async function jsonBody(request: IncomingMessage): Promise<any> {
   const chunks: Buffer[] = []; let length = 0;
@@ -26,6 +28,7 @@ export function cloudServer(runtime: CloudRuntime, token: string) {
   const { backend, gemini, skills, root } = runtime;
   const ttsActive = new Map<string, AbortController>();
   const ttsPending = new Set<Promise<void>>();
+  backend.database.raw.exec("CREATE TABLE IF NOT EXISTS cloud_batches (id TEXT PRIMARY KEY, hash TEXT NOT NULL, forms TEXT NOT NULL, prepared TEXT NOT NULL, job_ids TEXT)");
   backend.database.raw.exec("CREATE TABLE IF NOT EXISTS cloud_tts (id TEXT PRIMARY KEY, hash TEXT NOT NULL, state TEXT NOT NULL, file TEXT)");
   backend.database.raw.prepare("UPDATE cloud_tts SET state='interrupted' WHERE state='processing'").run();
   const authorized = (value: string | undefined) => {
@@ -45,6 +48,49 @@ export function cloudServer(runtime: CloudRuntime, token: string) {
     };
     try {
       if (method === "GET" && resource === "health") return send({ ready: true, scheduler: backend.scheduler.isRunning() });
+      if (resource === "workspace") {
+        if (method === "GET" && id === "modules") return send({modules:Object.keys(MODULES),speech:"/tts",operations:["POST /workspace/preview","POST /workspace/batches","GET /workspace/batches/:id","PATCH /workspace/batches/:id","POST /workspace/batches/:id/submit","DELETE /workspace/batches/:id"]});
+        if (method === "POST" && id === "preview") return send({jobs:await prepareTaskForm(runtime,await jsonBody(request))});
+        if (id === "batches") {
+          const row = (key: string) => backend.database.raw.prepare("SELECT * FROM cloud_batches WHERE id=?").get(key) as {id:string;hash:string;forms:string;prepared:string;job_ids:string|null}|undefined;
+          const view = (r:NonNullable<ReturnType<typeof row>>) => ({id:r.id,tasks:JSON.parse(r.forms),jobs:JSON.parse(r.prepared),jobIds:r.job_ids?JSON.parse(r.job_ids):[],submitted:!!r.job_ids});
+          if(method==="GET") return send(action ? (row(action)?view(row(action)!):null) : (backend.database.raw.prepare("SELECT id FROM cloud_batches ORDER BY rowid DESC").all() as {id:string}[]).map(r=>view(row(r.id)!)));
+          if(method==="POST"&&action&&index==="submit") {
+            const result=backend.database.transaction(()=>{
+              const r=row(action);if(!r)throw new Error("制作批次不存在");
+              if(r.job_ids)return {replay:true,jobIds:JSON.parse(r.job_ids)};
+              const inputs=JSON.parse(r.prepared) as import("../core/types.js").CreateJobInput[];
+              for(const input of inputs){
+                const frozen=(input as any).workspaceProfileVersion;
+                if(backend.workflows.get(input.workflowId)?.profileVersion!==frozen)throw new Error("工作流已更新，请重新编辑并预览制作批次");
+                delete (input as any).workspaceProfileVersion;
+              }
+              const jobIds=backend.jobs.createBatch(inputs).map(j=>j.id);
+              backend.database.raw.prepare("UPDATE cloud_batches SET job_ids=? WHERE id=?").run(JSON.stringify(jobIds),action);
+              return {replay:false,jobIds};
+            });return send(result);
+          }
+          if(method==="DELETE"&&action){const r=row(action);if(r?.job_ids)throw new Error("已提交批次不能当作草稿删除，请在任务队列操作");return send({removed:backend.database.raw.prepare("DELETE FROM cloud_batches WHERE id=?").run(action).changes>0});}
+          if((method==="POST"&&!action)||(method==="PATCH"&&action)){
+            const body=await jsonBody(request),key=action??body.requestId;
+            if(typeof key!=="string"||! /^[\w-]{1,100}$/.test(key)||!Array.isArray(body.tasks)||!body.tasks.length||body.tasks.length>100)throw new Error("填写 requestId 和 1–100 个 tasks");
+            const hash=createHash("sha256").update(JSON.stringify(body.tasks)).digest("hex");
+            const existing=row(key);
+            if(method==="POST"&&existing){if(existing.hash!==hash)throw new Error("批次 requestId 已用于不同内容");return send(view(existing));}
+            if(method==="PATCH"&&!existing)throw new Error("制作批次不存在");
+            if(existing?.job_ids)throw new Error("已提交批次不可修改");
+            const jobs: (import("../core/types.js").CreateJobInput & {workspaceProfileVersion:number})[]=[];
+            for(const form of body.tasks)for(const input of await prepareTaskForm(runtime,form))jobs.push({...input,workspaceProfileVersion:backend.workflows.get(input.workflowId)!.profileVersion});
+            if(jobs.length>500)throw new Error("一个批次最多 500 个段落任务");
+            backend.database.transaction(()=>{
+              const current=row(key);
+              if(current?.job_ids)throw new Error("批次已经提交");
+              if((current?.hash)!==(existing?.hash))throw new Error("批次已被修改，请重新读取");
+              backend.database.raw.prepare("INSERT INTO cloud_batches(id,hash,forms,prepared) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET hash=excluded.hash,forms=excluded.forms,prepared=excluded.prepared").run(key,hash,JSON.stringify(body.tasks),JSON.stringify(jobs));
+            });return send(view(row(key)!));
+          }
+        }
+      }
       if (method === "POST" && resource === "uploads") {
         const extension = path.extname(url.searchParams.get("filename") ?? "").toLowerCase();
         if (!/^\.(jpg|jpeg|png|webp|wav|mp3|aac|flac|ogg|m4a|mp4|mov|webm)$/.test(extension)) throw new Error("Unsupported media extension");
@@ -52,6 +98,12 @@ export function cloudServer(runtime: CloudRuntime, token: string) {
         const limit = new Transform({ transform(chunk, _encoding, done) { size += chunk.length; done(size > 2 * 1024 ** 3 ? new Error("Media exceeds 2 GB") : null, chunk); } });
         try { await pipeline(request, limit, createWriteStream(file, { flags: "wx", mode: 0o600 })); }
         catch (error) { await rm(file, { force: true }); throw error; }
+        if (/^\.(wav|mp3|aac|flac|ogg|m4a)$/.test(extension)) {
+          try {
+            const durationSeconds = await audioLength(file);
+            return send({ localPath: file, bytes: size, durationSeconds, suggestedEndSeconds: Math.ceil(durationSeconds) });
+          } catch (error) { await rm(file, { force: true }); throw error; }
+        }
         return send({ localPath: file, bytes: size });
       }
       if (resource === "accounts") {
@@ -97,6 +149,10 @@ export function cloudServer(runtime: CloudRuntime, token: string) {
         if (method === "POST" && action === "select") return send(skills.select(id, body.skillId));
       }
       if (resource === "jobs") {
+        if (method === "POST" && id === "preview") {
+          // Resolve exactly the same inputs as submission, without creating or billing a job.
+          return send(await runtime.prepare(await jsonBody(request)));
+        }
         if (method === "GET" && action === "files" && id) {
           const file = backend.jobs.get(id)?.outputs?.files[Number(index)]?.localPath;
           if (!file) throw new Error("File is not downloaded yet");
@@ -186,3 +242,4 @@ export function cloudServer(runtime: CloudRuntime, token: string) {
     await Promise.allSettled([...ttsPending]);
   } });
 }
+

@@ -1,6 +1,6 @@
 # npm dependency license inventory
 
-> Generated from `package-lock.json` and `frontend/package-lock.json` by `npm run licenses:generate`.
+> Generated from the core, frontend and cloud lockfiles by `npm run licenses:generate`.
 > Package metadata is an inventory aid; retain upstream license files when producing a distributable build.
 
 | Package | Version | License | Scope | Lockfile |
@@ -24,6 +24,8 @@
 | @babel/template | 7.29.7 | MIT | transitive/runtime | frontend |
 | @babel/traverse | 7.29.8 | MIT | transitive/runtime | frontend |
 | @babel/types | 7.29.8 | MIT | transitive/runtime | frontend |
+| @borewit/text-codec | 0.2.3 | MIT | transitive/runtime | cloud |
+| @borewit/text-codec | 0.2.3 | MIT | transitive/development | core |
 | @electron-internal/extract-zip | 1.0.5 | BSD-2-Clause | transitive/development | core |
 | @electron/asar | 3.4.1 | MIT | transitive/development | core |
 | @electron/asar/node_modules/balanced-match | 1.0.2 | MIT | transitive/development | core |
@@ -140,10 +142,15 @@
 | @rollup/rollup-win32-x64-msvc | 4.63.4 | MIT | transitive/runtime | frontend |
 | @sindresorhus/is | 4.6.0 | MIT | transitive/development | core |
 | @szmarczak/http-timer | 4.0.6 | MIT | transitive/development | core |
+| @tokenizer/inflate | 0.6.0 | MIT | transitive/runtime | cloud |
+| @tokenizer/inflate | 0.6.0 | MIT | transitive/development | core |
+| @tokenizer/token | 0.3.0 | MIT | transitive/runtime | cloud |
+| @tokenizer/token | 0.3.0 | MIT | transitive/development | core |
 | @types/babel__core | 7.20.5 | MIT | transitive/runtime | frontend |
 | @types/babel__generator | 7.27.0 | MIT | transitive/runtime | frontend |
 | @types/babel__template | 7.4.4 | MIT | transitive/runtime | frontend |
 | @types/babel__traverse | 7.28.0 | MIT | transitive/runtime | frontend |
+| @types/better-sqlite3 | 7.6.13 | MIT | direct/development | cloud |
 | @types/better-sqlite3 | 7.6.13 | MIT | direct/development | core |
 | @types/cacheable-request | 6.0.3 | MIT | transitive/development | core |
 | @types/debug | 4.1.13 | MIT | transitive/development | core |
@@ -153,6 +160,7 @@
 | @types/keyv | 3.1.4 | MIT | transitive/development | core |
 | @types/ms | 2.1.0 | MIT | transitive/development | core |
 | @types/node | 24.19.1 | MIT | direct/development | core |
+| @types/node | 24.19.2 | MIT | direct/development | cloud |
 | @types/react | 19.3.0 | MIT | direct/development | frontend |
 | @types/react-dom | 19.3.0 | MIT | direct/development | frontend |
 | @types/responselike | 1.0.3 | MIT | transitive/development | core |
@@ -183,15 +191,20 @@
 | at-least-node | 1.0.0 | ISC | transitive/development | core |
 | aws4 | 1.13.2 | MIT | transitive/development | core |
 | balanced-match | 4.0.4 | MIT | transitive/development | core |
+| base64-js | 1.5.1 | MIT | transitive/runtime | cloud |
 | base64-js | 1.5.1 | MIT | transitive/runtime | core |
 | baseline-browser-mapping | 2.11.25 | Apache-2.0 | transitive/runtime | frontend |
+| better-sqlite3 | 12.11.1 | MIT | direct/runtime | cloud |
 | better-sqlite3 | 12.11.1 | MIT | direct/runtime | core |
+| bindings | 1.5.0 | MIT | transitive/runtime | cloud |
 | bindings | 1.5.0 | MIT | transitive/runtime | core |
+| bl | 4.1.0 | MIT | transitive/runtime | cloud |
 | bl | 4.1.0 | MIT | transitive/runtime | core |
 | bluebird | 3.7.2 | MIT | transitive/development | core |
 | boolean | 3.2.0 | MIT | transitive/development | core |
 | brace-expansion | 5.0.12 | MIT | transitive/development | core |
 | browserslist | 4.29.0 | MIT | transitive/runtime | frontend |
+| buffer | 5.7.1 | MIT | transitive/runtime | cloud |
 | buffer | 5.7.1 | MIT | transitive/runtime | core |
 | buffer-from | 1.1.2 | MIT | transitive/development | core |
 | builder-util | 26.18.1 | MIT | transitive/development | core |
@@ -203,6 +216,7 @@
 | call-bind-apply-helpers | 1.0.2 | MIT | transitive/development | core |
 | caniuse-lite | 1.0.30001810 | CC-BY-4.0 | transitive/runtime | frontend |
 | chalk | 4.1.2 | MIT | transitive/development | core |
+| chownr | 1.1.4 | ISC | transitive/runtime | cloud |
 | chownr | 1.1.4 | ISC | transitive/runtime | core |
 | chromium-pickle-js | 0.2.0 | MIT | transitive/development | core |
 | ci-info | 4.4.0 | MIT | transitive/development | core |
@@ -215,19 +229,25 @@
 | commander | 5.1.0 | MIT | transitive/development | core |
 | compare-version | 0.1.2 | MIT | transitive/development | core |
 | concat-map | 0.0.1 | MIT | transitive/development | core |
+| content-type | 3.1.1 | MIT | transitive/runtime | cloud |
+| content-type | 3.1.1 | MIT | transitive/development | core |
 | convert-source-map | 2.0.0 | MIT | transitive/runtime | frontend |
 | core-util-is | 1.0.3 | MIT | transitive/development | core |
 | cross-dirname | 0.1.0 | MIT | transitive/development | core |
 | cross-spawn | 7.0.6 | MIT | transitive/development | core |
 | csstype | 3.2.3 | MIT | transitive/development | frontend |
+| debug | 4.4.3 | MIT | transitive/runtime | cloud |
 | debug | 4.4.3 | MIT | transitive/runtime | core |
 | debug | 4.4.3 | MIT | transitive/runtime | frontend |
+| decompress-response | 6.0.0 | MIT | transitive/runtime | cloud |
 | decompress-response | 6.0.0 | MIT | transitive/runtime | core |
+| deep-extend | 0.6.0 | MIT | transitive/runtime | cloud |
 | deep-extend | 0.6.0 | MIT | transitive/runtime | core |
 | defer-to-connect | 2.0.1 | MIT | transitive/development | core |
 | define-data-property | 1.1.4 | MIT | transitive/development | core |
 | define-properties | 1.2.1 | MIT | transitive/development | core |
 | delayed-stream | 1.0.0 | MIT | transitive/development | core |
+| detect-libc | 2.1.2 | Apache-2.0 | transitive/runtime | cloud |
 | detect-libc | 2.1.2 | Apache-2.0 | transitive/runtime | core |
 | detect-node | 2.1.0 | MIT | transitive/development | core |
 | dir-compare | 4.2.0 | MIT | transitive/development | core |
@@ -257,6 +277,7 @@
 | electron-winstaller/node_modules/jsonfile | 4.0.0 | MIT | transitive/development | core |
 | electron-winstaller/node_modules/universalify | 0.1.2 | MIT | transitive/development | core |
 | emoji-regex | 8.0.0 | MIT | transitive/development | core |
+| end-of-stream | 1.4.5 | MIT | transitive/runtime | cloud |
 | end-of-stream | 1.4.5 | MIT | transitive/runtime | core |
 | env-paths | 3.0.0 | MIT | transitive/development | core |
 | err-code | 2.0.3 | MIT | transitive/development | core |
@@ -270,18 +291,23 @@
 | escalade | 3.2.0 | MIT | transitive/development | core |
 | escalade | 3.2.0 | MIT | transitive/runtime | frontend |
 | escape-string-regexp | 4.0.0 | MIT | transitive/development | core |
+| expand-template | 2.0.3 | (MIT OR WTFPL) | transitive/runtime | cloud |
 | expand-template | 2.0.3 | (MIT OR WTFPL) | transitive/runtime | core |
 | exponential-backoff | 3.1.3 | Apache-2.0 | transitive/development | core |
 | fast-deep-equal | 3.1.3 | MIT | transitive/development | core |
 | fast-uri | 3.1.9 | BSD-3-Clause | transitive/development | core |
 | fdir | 6.5.0 | MIT | transitive/development | core |
 | fdir | 6.5.0 | MIT | transitive/runtime | frontend |
+| file-type | 22.3.0 | MIT | transitive/runtime | cloud |
+| file-type | 22.3.0 | MIT | transitive/development | core |
+| file-uri-to-path | 1.0.0 | MIT | transitive/runtime | cloud |
 | file-uri-to-path | 1.0.0 | MIT | transitive/runtime | core |
 | filelist | 1.0.6 | Apache-2.0 | transitive/development | core |
 | filelist/node_modules/balanced-match | 1.0.2 | MIT | transitive/development | core |
 | filelist/node_modules/brace-expansion | 2.1.7 | MIT | transitive/development | core |
 | filelist/node_modules/minimatch | 5.1.9 | ISC | transitive/development | core |
 | form-data | 4.0.6 | MIT | transitive/development | core |
+| fs-constants | 1.0.0 | MIT | transitive/runtime | cloud |
 | fs-constants | 1.0.0 | MIT | transitive/runtime | core |
 | fs-extra | 10.1.0 | MIT | transitive/runtime | core |
 | fs.realpath | 1.0.0 | ISC | transitive/development | core |
@@ -293,6 +319,7 @@
 | get-intrinsic | 1.3.0 | MIT | transitive/development | core |
 | get-proto | 1.0.1 | MIT | transitive/development | core |
 | get-stream | 5.2.0 | MIT | transitive/development | core |
+| github-from-package | 0.0.0 | MIT | transitive/runtime | cloud |
 | github-from-package | 0.0.0 | MIT | transitive/runtime | core |
 | glob | 7.2.3 | ISC | transitive/development | core |
 | glob/node_modules/balanced-match | 1.0.2 | MIT | transitive/development | core |
@@ -313,9 +340,12 @@
 | http-proxy-agent | 7.0.2 | MIT | transitive/development | core |
 | http2-wrapper | 1.0.3 | MIT | transitive/development | core |
 | https-proxy-agent | 7.0.6 | MIT | transitive/development | core |
+| ieee754 | 1.2.1 | BSD-3-Clause | transitive/runtime | cloud |
 | ieee754 | 1.2.1 | BSD-3-Clause | transitive/runtime | core |
 | inflight | 1.0.6 | ISC | transitive/development | core |
+| inherits | 2.0.4 | ISC | transitive/runtime | cloud |
 | inherits | 2.0.4 | ISC | transitive/runtime | core |
+| ini | 1.3.8 | ISC | transitive/runtime | cloud |
 | ini | 1.3.8 | ISC | transitive/runtime | core |
 | is-fullwidth-code-point | 3.0.0 | MIT | transitive/development | core |
 | isarray | 1.0.0 | MIT | transitive/development | core |
@@ -344,20 +374,30 @@
 | lucide-react | 0.544.0 | ISC | direct/runtime | frontend |
 | matcher | 3.0.0 | MIT | transitive/development | core |
 | math-intrinsics | 1.1.0 | MIT | transitive/development | core |
+| media-typer | 2.0.0 | MIT | transitive/runtime | cloud |
+| media-typer | 2.0.0 | MIT | transitive/development | core |
 | mime | 2.6.0 | MIT | transitive/development | core |
 | mime-db | 1.52.0 | MIT | transitive/development | core |
 | mime-types | 2.1.35 | MIT | transitive/development | core |
+| mimic-response | 3.1.0 | MIT | transitive/runtime | cloud |
 | mimic-response | 3.1.0 | MIT | transitive/runtime | core |
 | minimatch | 10.2.6 | BlueOak-1.0.0 | transitive/development | core |
+| minimist | 1.2.8 | MIT | transitive/runtime | cloud |
 | minimist | 1.2.8 | MIT | transitive/runtime | core |
 | minipass | 7.1.3 | BlueOak-1.0.0 | transitive/development | core |
 | minizlib | 3.1.0 | MIT | transitive/development | core |
 | mkdirp | 0.5.6 | MIT | transitive/development | core |
+| mkdirp-classic | 0.5.3 | MIT | transitive/runtime | cloud |
 | mkdirp-classic | 0.5.3 | MIT | transitive/runtime | core |
+| ms | 2.1.3 | MIT | transitive/runtime | cloud |
 | ms | 2.1.3 | MIT | transitive/runtime | core |
 | ms | 2.1.3 | MIT | transitive/runtime | frontend |
+| music-metadata | 12.3.3 | MIT | direct/runtime | cloud |
+| music-metadata | 12.3.3 | MIT | direct/development | core |
 | nanoid | 3.3.19 | MIT | transitive/runtime | frontend |
+| napi-build-utils | 2.0.0 | MIT | transitive/runtime | cloud |
 | napi-build-utils | 2.0.0 | MIT | transitive/runtime | core |
+| node-abi | 3.101.0 | MIT | transitive/runtime | cloud |
 | node-abi | 3.96.0 | MIT | transitive/runtime | core |
 | node-api-version | 0.2.1 | MIT | transitive/development | core |
 | node-gyp | 12.4.0 | MIT | transitive/development | core |
@@ -370,6 +410,7 @@
 | nopt | 9.0.0 | ISC | transitive/development | core |
 | normalize-url | 6.1.0 | MIT | transitive/development | core |
 | object-keys | 1.1.1 | MIT | transitive/development | core |
+| once | 1.4.0 | ISC | transitive/runtime | cloud |
 | once | 1.4.0 | ISC | transitive/runtime | core |
 | p-cancelable | 2.1.1 | MIT | transitive/development | core |
 | p-limit | 3.1.0 | MIT | transitive/development | core |
@@ -385,21 +426,25 @@
 | postcss | 8.5.28 | MIT | transitive/runtime | frontend |
 | postject | 1.0.0-alpha.6 | MIT | transitive/development | core |
 | postject/node_modules/commander | 9.5.0 | MIT | transitive/development | core |
+| prebuild-install | 7.1.3 | MIT | transitive/runtime | cloud |
 | prebuild-install | 7.1.3 | MIT | transitive/runtime | core |
 | proc-log | 6.1.0 | ISC | transitive/development | core |
 | process-nextick-args | 2.0.1 | MIT | transitive/development | core |
 | progress | 2.0.3 | MIT | transitive/development | core |
 | promise-retry | 2.0.1 | MIT | transitive/development | core |
 | proper-lockfile | 4.1.2 | MIT | transitive/development | core |
+| pump | 3.0.4 | MIT | transitive/runtime | cloud |
 | pump | 3.0.4 | MIT | transitive/runtime | core |
 | pvtsutils | 1.3.6 | MIT | transitive/development | core |
 | pvutils | 1.2.0 | MIT | transitive/development | core |
 | quick-lru | 5.1.1 | MIT | transitive/development | core |
+| rc | 1.2.8 | (BSD-2-Clause OR MIT OR Apache-2.0) | transitive/runtime | cloud |
 | rc | 1.2.8 | (BSD-2-Clause OR MIT OR Apache-2.0) | transitive/runtime | core |
 | react | 19.3.0 | MIT | direct/runtime | frontend |
 | react-dom | 19.3.0 | MIT | direct/runtime | frontend |
 | react-refresh | 0.18.0 | MIT | transitive/runtime | frontend |
 | read-binary-file-arch | 1.0.6 | MIT | transitive/development | core |
+| readable-stream | 3.6.2 | MIT | transitive/runtime | cloud |
 | readable-stream | 3.6.2 | MIT | transitive/runtime | core |
 | require-directory | 2.1.1 | MIT | transitive/development | core |
 | require-from-string | 2.0.2 | MIT | transitive/development | core |
@@ -411,18 +456,22 @@
 | roarr | 2.15.4 | BSD-3-Clause | transitive/development | core |
 | rollup | 4.63.4 | MIT | transitive/runtime | frontend |
 | runninghub-multi-task-runner-core | unknown | UNDECLARED | direct/runtime | frontend |
+| safe-buffer | 5.2.1 | MIT | transitive/runtime | cloud |
 | safe-buffer | 5.2.1 | MIT | transitive/runtime | core |
 | sanitize-filename | 1.6.4 | WTFPL OR ISC | transitive/development | core |
 | sax | 1.6.1 | BlueOak-1.0.0 | transitive/runtime | core |
 | scheduler | 0.28.0 | MIT | transitive/runtime | frontend |
 | semver | 6.3.1 | ISC | transitive/runtime | frontend |
+| semver | 7.8.5 | ISC | transitive/runtime | cloud |
 | semver | 7.8.5 | ISC | transitive/runtime | core |
 | semver-compare | 1.0.0 | MIT | transitive/development | core |
 | serialize-error | 7.0.1 | MIT | transitive/development | core |
 | shebang-command | 2.0.0 | MIT | transitive/development | core |
 | shebang-regex | 3.0.0 | MIT | transitive/development | core |
 | signal-exit | 3.0.7 | ISC | transitive/development | core |
+| simple-concat | 1.0.1 | MIT | transitive/runtime | cloud |
 | simple-concat | 1.0.1 | MIT | transitive/runtime | core |
+| simple-get | 4.0.1 | MIT | transitive/runtime | cloud |
 | simple-get | 4.0.1 | MIT | transitive/runtime | core |
 | simple-update-notifier | 2.0.0 | MIT | transitive/development | core |
 | source-map | 0.6.1 | BSD-3-Clause | transitive/development | core |
@@ -430,14 +479,20 @@
 | source-map-support | 0.5.21 | MIT | transitive/development | core |
 | sprintf-js | 1.1.3 | BSD-3-Clause | transitive/development | core |
 | stat-mode | 1.0.0 | MIT | transitive/development | core |
+| string_decoder | 1.3.0 | MIT | transitive/runtime | cloud |
 | string_decoder | 1.3.0 | MIT | transitive/runtime | core |
 | string-width | 4.2.3 | MIT | transitive/development | core |
 | strip-ansi | 6.0.1 | MIT | transitive/development | core |
+| strip-json-comments | 2.0.1 | MIT | transitive/runtime | cloud |
 | strip-json-comments | 2.0.1 | MIT | transitive/runtime | core |
+| strtok3 | 10.6.3 | MIT | transitive/runtime | cloud |
+| strtok3 | 10.6.3 | MIT | transitive/development | core |
 | sumchecker | 3.0.1 | Apache-2.0 | transitive/development | core |
 | supports-color | 7.2.0 | MIT | transitive/development | core |
 | tar | 7.5.22 | BlueOak-1.0.0 | transitive/development | core |
+| tar-fs | 2.1.5 | MIT | transitive/runtime | cloud |
 | tar-fs | 2.1.5 | MIT | transitive/runtime | core |
+| tar-stream | 2.2.0 | MIT | transitive/runtime | cloud |
 | tar-stream | 2.2.0 | MIT | transitive/runtime | core |
 | tar/node_modules/chownr | 3.0.0 | BlueOak-1.0.0 | transitive/development | core |
 | temp | 0.9.4 | MIT | transitive/development | core |
@@ -449,25 +504,36 @@
 | tinyglobby | 0.2.17 | MIT | transitive/runtime | frontend |
 | tmp | 0.2.7 | MIT | transitive/development | core |
 | tmp-promise | 3.0.3 | MIT | transitive/development | core |
+| token-types | 6.1.2 | MIT | transitive/runtime | cloud |
+| token-types | 6.1.2 | MIT | transitive/development | core |
 | truncate-utf8-bytes | 1.0.2 | WTFPL | transitive/development | core |
 | tslib | 2.9.1 | 0BSD | transitive/development | core |
 | tsx | 4.23.15 | MIT | direct/development | core |
+| tunnel-agent | 0.6.0 | Apache-2.0 | transitive/runtime | cloud |
 | tunnel-agent | 0.6.0 | Apache-2.0 | transitive/runtime | core |
 | type-fest | 0.13.1 | (MIT OR CC0-1.0) | transitive/development | core |
+| typescript | 5.9.3 | Apache-2.0 | direct/development | cloud |
 | typescript | 5.9.3 | Apache-2.0 | direct/development | core |
 | typescript | 5.9.3 | Apache-2.0 | direct/development | frontend |
+| uint8array-extras | 1.6.0 | MIT | transitive/runtime | cloud |
+| uint8array-extras | 1.6.0 | MIT | transitive/development | core |
 | undici | 7.30.1 | MIT | transitive/development | core |
+| undici-types | 7.24.6 | MIT | transitive/development | cloud |
 | undici-types | 7.24.6 | MIT | transitive/development | core |
 | universalify | 2.0.1 | MIT | transitive/runtime | core |
 | unzipper | 0.12.5 | MIT | transitive/development | core |
 | unzipper/node_modules/fs-extra | 11.3.1 | MIT | transitive/development | core |
 | update-browserslist-db | 1.3.3 | MIT | transitive/runtime | frontend |
 | utf8-byte-length | 1.0.5 | (WTFPL OR MIT) | transitive/development | core |
+| util-deprecate | 1.0.2 | MIT | transitive/runtime | cloud |
 | util-deprecate | 1.0.2 | MIT | transitive/runtime | core |
 | vite | 7.3.7 | MIT | direct/runtime | frontend |
 | webcrypto-core | 1.9.2 | MIT | transitive/development | core |
 | which | 2.0.2 | ISC | transitive/development | core |
+| win-guid | 0.2.1 | MIT | transitive/runtime | cloud |
+| win-guid | 0.2.1 | MIT | transitive/development | core |
 | wrap-ansi | 7.0.0 | MIT | transitive/development | core |
+| wrappy | 1.0.2 | ISC | transitive/runtime | cloud |
 | wrappy | 1.0.2 | ISC | transitive/runtime | core |
 | xmlbuilder | 15.1.1 | MIT | transitive/development | core |
 | y18n | 5.0.8 | ISC | transitive/development | core |

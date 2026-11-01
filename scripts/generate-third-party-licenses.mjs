@@ -5,6 +5,7 @@ const root = process.cwd();
 const sources = [
   { label: "core", path: path.join(root, "package-lock.json") },
   { label: "frontend", path: path.join(root, "frontend", "package-lock.json") },
+  { label: "cloud", path: path.join(root, "cloud", "package-lock.json") },
 ];
 const rows = [];
 for (const source of sources) {
@@ -22,7 +23,7 @@ rows.sort((left, right) => left.name.localeCompare(right.name) || left.version.l
 const generated = [
   "# npm dependency license inventory",
   "",
-  "> Generated from `package-lock.json` and `frontend/package-lock.json` by `npm run licenses:generate`.",
+  "> Generated from the core, frontend and cloud lockfiles by `npm run licenses:generate`.",
   "> Package metadata is an inventory aid; retain upstream license files when producing a distributable build.",
   "",
   "| Package | Version | License | Scope | Lockfile |",
