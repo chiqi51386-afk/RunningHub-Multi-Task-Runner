@@ -36,15 +36,15 @@
 | @electron/notarize/node_modules/fs-extra | 9.1.0 | MIT | transitive/development | core |
 | @electron/osx-sign | 1.3.3 | BSD-2-Clause | transitive/development | core |
 | @electron/osx-sign/node_modules/isbinaryfile | 4.0.10 | MIT | transitive/development | core |
-| @electron/rebuild | 4.2.0 | MIT | direct/development | core |
+| @electron/rebuild | 4.2.1 | MIT | direct/development | core |
 | @electron/rebuild/node_modules/node-abi | 4.35.0 | MIT | transitive/development | core |
 | @electron/universal | 2.0.3 | MIT | transitive/development | core |
 | @electron/universal/node_modules/balanced-match | 1.0.2 | MIT | transitive/development | core |
 | @electron/universal/node_modules/brace-expansion | 2.1.7 | MIT | transitive/development | core |
-| @electron/universal/node_modules/fs-extra | 11.4.0 | MIT | transitive/development | core |
+| @electron/universal/node_modules/fs-extra | 11.4.1 | MIT | transitive/development | core |
 | @electron/universal/node_modules/minimatch | 9.0.9 | ISC | transitive/development | core |
 | @electron/windows-sign | 1.2.2 | BSD-2-Clause | transitive/development | core |
-| @electron/windows-sign/node_modules/fs-extra | 11.4.0 | MIT | transitive/development | core |
+| @electron/windows-sign/node_modules/fs-extra | 11.4.1 | MIT | transitive/development | core |
 | @esbuild/aix-ppc64 | 0.28.2 | MIT | transitive/development | core |
 | @esbuild/aix-ppc64 | 0.28.2 | MIT | transitive/runtime | frontend |
 | @esbuild/android-arm | 0.28.2 | MIT | transitive/development | core |
@@ -107,11 +107,11 @@
 | @malept/flatpak-bundler | 0.4.0 | MIT | transitive/development | core |
 | @malept/flatpak-bundler/node_modules/fs-extra | 9.1.0 | MIT | transitive/development | core |
 | @napi-rs/lzma-linux-x64-gnu | 1.5.1 | MIT | transitive/runtime | frontend |
-| @noble/hashes | 2.4.0 | MIT | transitive/development | core |
-| @peculiar/asn1-schema | 2.9.5 | MIT | transitive/development | core |
+| @noble/hashes | 1.8.0 | MIT | transitive/development | core |
+| @peculiar/asn1-schema | 2.11.1 | MIT | transitive/development | core |
 | @peculiar/json-schema | 1.1.12 | MIT | transitive/development | core |
 | @peculiar/utils | 2.0.3 | MIT | transitive/development | core |
-| @peculiar/webcrypto | 1.7.1 | MIT | transitive/development | core |
+| @peculiar/webcrypto | 1.7.2 | MIT | transitive/development | core |
 | @rolldown/pluginutils | 1.0.0-rc.3 | MIT | transitive/runtime | frontend |
 | @rollup/rollup-android-arm-eabi | 4.63.4 | MIT | transitive/runtime | frontend |
 | @rollup/rollup-android-arm64 | 4.63.4 | MIT | transitive/runtime | frontend |
@@ -163,10 +163,11 @@
 | ajv | 8.20.0 | MIT | transitive/development | core |
 | ansi-regex | 5.0.1 | MIT | transitive/development | core |
 | ansi-styles | 4.3.0 | MIT | transitive/development | core |
-| app-builder-lib | 26.15.3 | MIT | transitive/development | core |
+| app-builder-lib | 26.18.1 | MIT | transitive/development | core |
 | app-builder-lib/node_modules/@electron/get | 3.1.0 | MIT | transitive/development | core |
 | app-builder-lib/node_modules/@electron/get/node_modules/fs-extra | 8.1.0 | MIT | transitive/development | core |
 | app-builder-lib/node_modules/@electron/get/node_modules/semver | 6.3.1 | ISC | transitive/development | core |
+| app-builder-lib/node_modules/builder-util-runtime | 9.7.1 | MIT | transitive/development | core |
 | app-builder-lib/node_modules/ci-info | 4.3.1 | MIT | transitive/development | core |
 | app-builder-lib/node_modules/env-paths | 2.2.1 | MIT | transitive/development | core |
 | app-builder-lib/node_modules/isexe | 3.1.5 | BlueOak-1.0.0 | transitive/development | core |
@@ -175,7 +176,7 @@
 | app-builder-lib/node_modules/universalify | 0.1.2 | MIT | transitive/development | core |
 | app-builder-lib/node_modules/which | 5.0.0 | ISC | transitive/development | core |
 | argparse | 2.0.1 | Python-2.0 | transitive/runtime | core |
-| asn1js | 3.0.10 | BSD-3-Clause | transitive/development | core |
+| asn1js | 3.1.0 | BSD-3-Clause | transitive/development | core |
 | async | 3.2.6 | MIT | transitive/development | core |
 | async-exit-hook | 2.0.1 | MIT | transitive/development | core |
 | asynckit | 0.4.0 | MIT | transitive/development | core |
@@ -193,8 +194,9 @@
 | browserslist | 4.29.0 | MIT | transitive/runtime | frontend |
 | buffer | 5.7.1 | MIT | transitive/runtime | core |
 | buffer-from | 1.1.2 | MIT | transitive/development | core |
-| builder-util | 26.15.3 | MIT | transitive/development | core |
+| builder-util | 26.18.1 | MIT | transitive/development | core |
 | builder-util-runtime | 9.7.0 | MIT | transitive/runtime | core |
+| builder-util/node_modules/builder-util-runtime | 9.7.1 | MIT | transitive/development | core |
 | bytestreamjs | 2.0.1 | BSD-3-Clause | transitive/development | core |
 | cacheable-lookup | 5.0.4 | MIT | transitive/development | core |
 | cacheable-request | 7.0.4 | MIT | transitive/development | core |
@@ -232,7 +234,7 @@
 | dir-compare/node_modules/balanced-match | 1.0.2 | MIT | transitive/development | core |
 | dir-compare/node_modules/brace-expansion | 1.1.21 | MIT | transitive/development | core |
 | dir-compare/node_modules/minimatch | 3.1.5 | ISC | transitive/development | core |
-| dmg-builder | 26.15.3 | MIT | transitive/development | core |
+| dmg-builder | 26.18.1 | MIT | transitive/development | core |
 | dotenv | 16.6.1 | BSD-2-Clause | transitive/development | core |
 | dotenv-expand | 11.0.7 | BSD-2-Clause | transitive/development | core |
 | dunder-proto | 1.0.1 | MIT | transitive/development | core |
@@ -241,10 +243,12 @@
 | duplexer2/node_modules/safe-buffer | 5.1.2 | MIT | transitive/development | core |
 | duplexer2/node_modules/string_decoder | 1.1.1 | MIT | transitive/development | core |
 | ejs | 3.1.10 | Apache-2.0 | transitive/development | core |
-| electron | 44.5.1 | MIT | direct/development | core |
-| electron-builder | 26.15.3 | MIT | direct/development | core |
-| electron-builder-squirrel-windows | 26.15.3 | MIT | transitive/development | core |
-| electron-publish | 26.15.3 | MIT | transitive/development | core |
+| electron | 44.10.1 | MIT | direct/development | core |
+| electron-builder | 26.18.1 | MIT | direct/development | core |
+| electron-builder-squirrel-windows | 26.18.1 | MIT | transitive/development | core |
+| electron-builder/node_modules/builder-util-runtime | 9.7.1 | MIT | transitive/development | core |
+| electron-publish | 26.18.1 | MIT | transitive/development | core |
+| electron-publish/node_modules/builder-util-runtime | 9.7.1 | MIT | transitive/development | core |
 | electron-to-chromium | 1.5.433 | ISC | transitive/runtime | frontend |
 | electron-updater | 6.8.9 | MIT | direct/runtime | core |
 | electron-updater/node_modules/semver | 7.7.4 | ISC | transitive/runtime | core |
@@ -269,7 +273,7 @@
 | expand-template | 2.0.3 | (MIT OR WTFPL) | transitive/runtime | core |
 | exponential-backoff | 3.1.3 | Apache-2.0 | transitive/development | core |
 | fast-deep-equal | 3.1.3 | MIT | transitive/development | core |
-| fast-uri | 3.1.8 | BSD-3-Clause | transitive/development | core |
+| fast-uri | 3.1.9 | BSD-3-Clause | transitive/development | core |
 | fdir | 6.5.0 | MIT | transitive/development | core |
 | fdir | 6.5.0 | MIT | transitive/runtime | frontend |
 | file-uri-to-path | 1.0.0 | MIT | transitive/runtime | core |
@@ -359,7 +363,7 @@
 | node-gyp | 12.4.0 | MIT | transitive/development | core |
 | node-gyp/node_modules/env-paths | 2.2.1 | MIT | transitive/development | core |
 | node-gyp/node_modules/isexe | 4.0.0 | BlueOak-1.0.0 | transitive/development | core |
-| node-gyp/node_modules/undici | 6.28.1 | MIT | transitive/development | core |
+| node-gyp/node_modules/undici | 6.29.1 | MIT | transitive/development | core |
 | node-gyp/node_modules/which | 6.0.1 | ISC | transitive/development | core |
 | node-int64 | 0.4.0 | MIT | transitive/development | core |
 | node-releases | 2.0.56 | MIT | transitive/runtime | frontend |
@@ -376,8 +380,7 @@
 | picocolors | 1.1.1 | ISC | transitive/runtime | frontend |
 | picomatch | 4.0.7 | MIT | transitive/development | core |
 | picomatch | 4.0.7 | MIT | transitive/runtime | frontend |
-| pkijs | 3.4.1 | BSD-3-Clause | transitive/development | core |
-| pkijs/node_modules/@noble/hashes | 1.8.0 | MIT | transitive/development | core |
+| pkijs | 3.4.3 | BSD-3-Clause | transitive/development | core |
 | plist | 3.1.0 | MIT | transitive/development | core |
 | postcss | 8.5.28 | MIT | transitive/runtime | frontend |
 | postject | 1.0.0-alpha.6 | MIT | transitive/development | core |
@@ -447,13 +450,13 @@
 | tmp | 0.2.7 | MIT | transitive/development | core |
 | tmp-promise | 3.0.3 | MIT | transitive/development | core |
 | truncate-utf8-bytes | 1.0.2 | WTFPL | transitive/development | core |
-| tslib | 2.8.1 | 0BSD | transitive/development | core |
+| tslib | 2.9.1 | 0BSD | transitive/development | core |
 | tsx | 4.23.15 | MIT | direct/development | core |
 | tunnel-agent | 0.6.0 | Apache-2.0 | transitive/runtime | core |
 | type-fest | 0.13.1 | (MIT OR CC0-1.0) | transitive/development | core |
 | typescript | 5.9.3 | Apache-2.0 | direct/development | core |
 | typescript | 5.9.3 | Apache-2.0 | direct/development | frontend |
-| undici | 7.29.1 | MIT | transitive/development | core |
+| undici | 7.30.1 | MIT | transitive/development | core |
 | undici-types | 7.24.6 | MIT | transitive/development | core |
 | universalify | 2.0.1 | MIT | transitive/runtime | core |
 | unzipper | 0.12.5 | MIT | transitive/development | core |

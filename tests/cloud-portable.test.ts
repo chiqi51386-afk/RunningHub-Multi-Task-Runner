@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
@@ -72,7 +72,7 @@ test("headless API requires auth, imports desktop accounts and persists idempote
     const accounts = await (await fetch(base+"/accounts",{headers:{Authorization:"Bearer test-token"}})).text();
     assert.ok(!accounts.includes("test-rh-key"));
     const upload = await fetch(base+"/uploads?filename=test.jpg",{method:"POST",headers:{Authorization:"Bearer test-token"},body:Buffer.from("test")});
-    assert.equal(upload.status,200); const media = await upload.json(); assert.equal(await runtime.mediaPath(media.localPath),media.localPath);
+    assert.equal(upload.status,200); const media = await upload.json(); assert.equal(await runtime.mediaPath(media.localPath),await realpath(media.localPath));
     await assert.rejects(()=>runtime.mediaPath(path.join(root,"secrets.key")));
   } finally { await new Promise<void>(resolve=>server.close(()=>resolve())); await runtime.backend.close(); await rm(root,{recursive:true,force:true}); }
 });

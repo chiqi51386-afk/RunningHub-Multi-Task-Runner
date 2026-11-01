@@ -14,6 +14,8 @@ async function waitFor(predicate: () => boolean, timeoutMs = 4_000): Promise<voi
 test("mock clients drive shared-queue scheduling without network access", async () => {
   const clients = new Map<string, MockRunningHubClient>();
   const delays = new Map([["key-fast", 1], ["key-mid", 4], ["key-slow", 10]]);
+  let releaseSlow!: () => void;
+  const slowGate = new Promise<void>(resolve => { releaseSlow = resolve; });
   const backend = new RunningHubBackend({
     databasePath: ":memory:", logger: new NullLogger(),
     clientFactory: apiKey => {
@@ -23,6 +25,10 @@ test("mock clients drive shared-queue scheduling without network access", async 
         stepDelayMs: delays.get(apiKey),
         query: [{ status: "RUNNING" }, { status: "SUCCESS", results: [{ text: "done" }] }],
       });
+      if (apiKey === "key-slow") {
+        const poll = client.pollTask.bind(client);
+        client.pollTask = async (...args) => { await slowGate; return poll(...args); };
+      }
       clients.set(apiKey, client);
       return client;
     },
@@ -37,10 +43,12 @@ test("mock clients drive shared-queue scheduling without network access", async 
     });
     for (let index = 0; index < 18; index += 1) backend.jobs.create({ workflowId: workflow.id, parameters: { prompt: `job-${index}` } });
     await backend.start();
+    await waitFor(() => (clients.get("key-fast")?.calls.submit ?? 0) >= 2);
+    assert.equal(clients.get("key-slow")!.calls.submit, 1);
+    releaseSlow();
     await waitFor(() => backend.jobs.list().every(job => job.status === "COMPLETED"));
-    assert.ok(clients.get("key-fast")!.calls.submit > clients.get("key-slow")!.calls.submit);
     assert.equal([...clients.values()].reduce((sum, client) => sum + client.calls.submit, 0), 18);
-  } finally { await backend.close(); }
+  } finally { releaseSlow(); await backend.close(); }
 });
 
 test("mock client exposes deterministic RunningHub error scenarios", async () => {
