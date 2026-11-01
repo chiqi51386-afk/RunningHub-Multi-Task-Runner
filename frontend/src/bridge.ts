@@ -16,7 +16,7 @@ export interface UpdateInfo {
 }
 
 export interface UpdateProgress {
-  stage: "downloading" | "verifying" | "extracting" | "restarting";
+  stage: "downloading" | "verifying" | "extracting" | "restarting" | "failed";
   percent: number;
   message: string;
 }
@@ -49,6 +49,7 @@ export interface RunningHubRendererBridge {
     copyKeysUrl(): Promise<void>;
   };
   accounts: {
+    exportAll(): Promise<{ path: string; runninghub: number; gemini: number } | undefined>;
     setPriority(id:string,preferred:boolean):Promise<AccountView>;
     setConcurrency(id:string,value:number):Promise<AccountView>;
     list(): Promise<AccountView[]>;

@@ -90,7 +90,9 @@ export function classifyRunningHubError(input: {
     code = "INVALID_PARAMETER";
   } else if (remoteCode === "433" || /node_info_mismatch|field_not_found_in_node_inputs|node_errors|graph validation|workflow validation|节点校验|webapp\s+not\s+exists|workflow\s+not\s+exists/.test(combined)) {
     code = "WORKFLOW_VALIDATION";
-  } else if (input.httpStatus === 401 || input.httpStatus === 403 || /invalid.*key|unauthori[sz]ed|鉴权|token expired/.test(combined)) {
+  } else if (input.httpStatus === 401 || input.httpStatus === 403 || remoteCode === "806" || /invalid.*key|unauthori[sz]ed|鉴权|token expired|apikey_user_not_found|api.?key.*(?:invalid|not.?found)/.test(combined)) {
+    // Remote code 806 / APIKEY_USER_NOT_FOUND is the overseas site's
+    // (runninghub.ai) invalid-key response: HTTP 200 with a business code.
     code = "ACCOUNT_INVALID_KEY"; accountRelated = true; safeToReassign = input.phase !== "query";
   } else if (input.httpStatus === 429 || /rate.?limit|too many requests/.test(combined)) {
     code = "RATE_LIMIT"; retryable = true; accountRelated = true; safeToReassign = input.phase !== "query";

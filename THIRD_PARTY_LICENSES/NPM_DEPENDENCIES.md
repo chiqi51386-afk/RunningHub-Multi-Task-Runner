@@ -174,7 +174,7 @@
 | app-builder-lib/node_modules/semver | 7.7.4 | ISC | transitive/development | core |
 | app-builder-lib/node_modules/universalify | 0.1.2 | MIT | transitive/development | core |
 | app-builder-lib/node_modules/which | 5.0.0 | ISC | transitive/development | core |
-| argparse | 2.0.1 | Python-2.0 | transitive/development | core |
+| argparse | 2.0.1 | Python-2.0 | transitive/runtime | core |
 | asn1js | 3.0.10 | BSD-3-Clause | transitive/development | core |
 | async | 3.2.6 | MIT | transitive/development | core |
 | async-exit-hook | 2.0.1 | MIT | transitive/development | core |
@@ -194,7 +194,7 @@
 | buffer | 5.7.1 | MIT | transitive/runtime | core |
 | buffer-from | 1.1.2 | MIT | transitive/development | core |
 | builder-util | 26.15.3 | MIT | transitive/development | core |
-| builder-util-runtime | 9.7.0 | MIT | transitive/development | core |
+| builder-util-runtime | 9.7.0 | MIT | transitive/runtime | core |
 | bytestreamjs | 2.0.1 | BSD-3-Clause | transitive/development | core |
 | cacheable-lookup | 5.0.4 | MIT | transitive/development | core |
 | cacheable-request | 7.0.4 | MIT | transitive/development | core |
@@ -218,7 +218,7 @@
 | cross-dirname | 0.1.0 | MIT | transitive/development | core |
 | cross-spawn | 7.0.6 | MIT | transitive/development | core |
 | csstype | 3.2.3 | MIT | transitive/development | frontend |
-| debug | 4.4.3 | MIT | transitive/development | core |
+| debug | 4.4.3 | MIT | transitive/runtime | core |
 | debug | 4.4.3 | MIT | transitive/runtime | frontend |
 | decompress-response | 6.0.0 | MIT | transitive/runtime | core |
 | deep-extend | 0.6.0 | MIT | transitive/runtime | core |
@@ -246,6 +246,8 @@
 | electron-builder-squirrel-windows | 26.15.3 | MIT | transitive/development | core |
 | electron-publish | 26.15.3 | MIT | transitive/development | core |
 | electron-to-chromium | 1.5.433 | ISC | transitive/runtime | frontend |
+| electron-updater | 6.8.9 | MIT | direct/runtime | core |
+| electron-updater/node_modules/semver | 7.7.4 | ISC | transitive/runtime | core |
 | electron-winstaller | 5.4.0 | MIT | transitive/development | core |
 | electron-winstaller/node_modules/fs-extra | 7.0.1 | MIT | transitive/development | core |
 | electron-winstaller/node_modules/jsonfile | 4.0.0 | MIT | transitive/development | core |
@@ -277,7 +279,7 @@
 | filelist/node_modules/minimatch | 5.1.9 | ISC | transitive/development | core |
 | form-data | 4.0.6 | MIT | transitive/development | core |
 | fs-constants | 1.0.0 | MIT | transitive/runtime | core |
-| fs-extra | 10.1.0 | MIT | transitive/development | core |
+| fs-extra | 10.1.0 | MIT | transitive/runtime | core |
 | fs.realpath | 1.0.0 | ISC | transitive/development | core |
 | fsevents | 2.3.3 | MIT | transitive/development | core |
 | fsevents | 2.3.3 | MIT | transitive/runtime | frontend |
@@ -296,7 +298,7 @@
 | globalthis | 1.0.4 | MIT | transitive/development | core |
 | gopd | 1.2.0 | MIT | transitive/development | core |
 | got | 11.8.6 | MIT | transitive/development | core |
-| graceful-fs | 4.2.11 | ISC | transitive/development | core |
+| graceful-fs | 4.2.11 | ISC | transitive/runtime | core |
 | has-flag | 4.0.0 | MIT | transitive/development | core |
 | has-property-descriptors | 1.0.2 | MIT | transitive/development | core |
 | has-symbols | 1.1.0 | MIT | transitive/development | core |
@@ -318,17 +320,19 @@
 | jake | 10.9.4 | Apache-2.0 | transitive/development | core |
 | jiti | 2.7.0 | MIT | transitive/development | core |
 | js-tokens | 4.0.0 | MIT | transitive/runtime | frontend |
-| js-yaml | 4.3.2 | MIT | transitive/development | core |
+| js-yaml | 4.3.2 | MIT | transitive/runtime | core |
 | jsesc | 3.1.0 | MIT | transitive/runtime | frontend |
 | json-buffer | 3.0.1 | MIT | transitive/development | core |
 | json-schema-traverse | 1.0.0 | MIT | transitive/development | core |
 | json-stringify-safe | 5.0.1 | ISC | transitive/development | core |
 | json5 | 2.2.3 | MIT | transitive/development | core |
 | json5 | 2.2.3 | MIT | transitive/runtime | frontend |
-| jsonfile | 6.2.1 | MIT | transitive/development | core |
+| jsonfile | 6.2.1 | MIT | transitive/runtime | core |
 | keyv | 4.5.4 | MIT | transitive/development | core |
-| lazy-val | 1.0.5 | MIT | transitive/development | core |
+| lazy-val | 1.0.5 | MIT | transitive/runtime | core |
 | lodash | 4.18.1 | MIT | transitive/development | core |
+| lodash.escaperegexp | 4.1.2 | MIT | transitive/runtime | core |
+| lodash.isequal | 4.5.0 | MIT | transitive/runtime | core |
 | lowercase-keys | 2.0.0 | MIT | transitive/development | core |
 | lru-cache | 5.1.1 | ISC | transitive/runtime | frontend |
 | lru-cache | 6.0.0 | ISC | transitive/development | core |
@@ -346,7 +350,7 @@
 | minizlib | 3.1.0 | MIT | transitive/development | core |
 | mkdirp | 0.5.6 | MIT | transitive/development | core |
 | mkdirp-classic | 0.5.3 | MIT | transitive/runtime | core |
-| ms | 2.1.3 | MIT | transitive/development | core |
+| ms | 2.1.3 | MIT | transitive/runtime | core |
 | ms | 2.1.3 | MIT | transitive/runtime | frontend |
 | nanoid | 3.3.19 | MIT | transitive/runtime | frontend |
 | napi-build-utils | 2.0.0 | MIT | transitive/runtime | core |
@@ -403,9 +407,10 @@
 | rimraf | 2.6.3 | ISC | transitive/development | core |
 | roarr | 2.15.4 | BSD-3-Clause | transitive/development | core |
 | rollup | 4.63.4 | MIT | transitive/runtime | frontend |
+| runninghub-multi-task-runner-core | unknown | UNDECLARED | direct/runtime | frontend |
 | safe-buffer | 5.2.1 | MIT | transitive/runtime | core |
 | sanitize-filename | 1.6.4 | WTFPL OR ISC | transitive/development | core |
-| sax | 1.6.1 | BlueOak-1.0.0 | transitive/development | core |
+| sax | 1.6.1 | BlueOak-1.0.0 | transitive/runtime | core |
 | scheduler | 0.28.0 | MIT | transitive/runtime | frontend |
 | semver | 6.3.1 | ISC | transitive/runtime | frontend |
 | semver | 7.8.5 | ISC | transitive/runtime | core |
@@ -436,6 +441,7 @@
 | temp-file | 3.4.0 | MIT | transitive/development | core |
 | tiny-async-pool | 1.3.0 | MIT | transitive/development | core |
 | tiny-async-pool/node_modules/semver | 5.7.2 | ISC | transitive/development | core |
+| tiny-typed-emitter | 2.1.0 | MIT | transitive/runtime | core |
 | tinyglobby | 0.2.17 | MIT | transitive/development | core |
 | tinyglobby | 0.2.17 | MIT | transitive/runtime | frontend |
 | tmp | 0.2.7 | MIT | transitive/development | core |
@@ -449,7 +455,7 @@
 | typescript | 5.9.3 | Apache-2.0 | direct/development | frontend |
 | undici | 7.29.1 | MIT | transitive/development | core |
 | undici-types | 7.24.6 | MIT | transitive/development | core |
-| universalify | 2.0.1 | MIT | transitive/development | core |
+| universalify | 2.0.1 | MIT | transitive/runtime | core |
 | unzipper | 0.12.5 | MIT | transitive/development | core |
 | unzipper/node_modules/fs-extra | 11.3.1 | MIT | transitive/development | core |
 | update-browserslist-db | 1.3.3 | MIT | transitive/runtime | frontend |

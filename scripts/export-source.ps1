@@ -4,16 +4,17 @@ $version = (Get-Content -LiteralPath (Join-Path $projectRoot 'package.json') -Ra
 $staging = Join-Path ([System.IO.Path]::GetTempPath()) ('rh-source-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $staging | Out-Null
 # Explicit source allowlist: never copy a workspace or user-data directory wholesale.
-$folders = @('src', 'tests', 'desktop', 'bundled-workflows', 'prompt-skills', 'THIRD_PARTY_LICENSES', '.github', 'frontend/src', 'frontend/tests')
+$folders = @('src', 'tests', 'desktop', 'bundled-workflows', 'prompt-skills', 'THIRD_PARTY_LICENSES', '.github', 'frontend/src', 'frontend/tests', 'cloud/distribution')
 foreach ($folder in $folders) {
   $destination = Join-Path $staging $folder
   New-Item -ItemType Directory -Path $destination -Force | Out-Null
   Get-ChildItem -LiteralPath (Join-Path $projectRoot $folder) | Copy-Item -Destination $destination -Recurse
 }
-$files = @('package.json','package-lock.json','tsconfig.json','.gitignore','README.md','KNOWN_ISSUES.md','Start RunningHub Runner.cmd','RELEASE_NOTES_v1.1.1.md',
+$files = @('cloud/package.json','cloud/package-lock.json','cloud/tsconfig.json','cloud/Dockerfile','cloud/compose.yaml','cloud/client.py','cloud/README.md',
+  'package.json','package-lock.json','tsconfig.json','.gitignore','README.md','KNOWN_ISSUES.md','Start RunningHub Runner.cmd',"RELEASE_NOTES_v$version.md",
   'frontend/package.json','frontend/package-lock.json','frontend/index.html','frontend/tsconfig.json','frontend/vite.config.ts',
-  'scripts/ensure-electron-native.mjs','scripts/generate-third-party-licenses.mjs','scripts/verify-package-boundaries.mjs',
-  'scripts/package-windows.ps1','scripts/export-source.ps1','scripts/security-scan.mjs','scripts/security-encryption-smoke.cjs','scripts/dev.ts','scripts/integration.ts',
+  'scripts/ensure-electron-native.mjs','scripts/prepare-download-engine.mjs','scripts/prepare-download-engine.ps1','scripts/generate-third-party-licenses.mjs','scripts/verify-package-boundaries.mjs',
+  'scripts/package-linux.py','scripts/verify-windows-installer.mjs','scripts/export-source.ps1','scripts/security-scan.mjs','scripts/security-encryption-smoke.cjs','scripts/dev.ts','scripts/integration.ts',
   'scripts/diagnose-account.cjs','scripts/test-frontend-performance.cjs','scripts/test-proxy-network.cjs')
 foreach ($file in $files) {
   $source = Join-Path $projectRoot $file
@@ -22,7 +23,7 @@ foreach ($file in $files) {
   New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
   Copy-Item -LiteralPath $source -Destination $destination
 }
-$prohibited = Get-ChildItem -LiteralPath $staging -Recurse -File | Where-Object { $_.Name -match '\.sqlite|^\.env|\.log$|\.mp4$|\.mp3$|\.png$|\.jpg$' -and $_.FullName -ne (Join-Path $staging 'desktop/assets/icon.png') }
+$prohibited = Get-ChildItem -LiteralPath $staging -Recurse -File | Where-Object { $_.Name -match '\.sqlite|^\.env|\.log$|\.mp4$|\.mp3$|\.png$|\.jpg$' -and $_.FullName -ne (Join-Path $staging 'desktop/assets/icon.png') -and -not $_.FullName.StartsWith((Join-Path $staging 'cloud/distribution/smoke/assets') + [IO.Path]::DirectorySeparatorChar) }
 if ($prohibited) { throw 'Unexpected data/media files in source archive' }
 $archive = Join-Path $projectRoot "release-build/RunningHub-Runner-v$version-source.zip"
 New-Item -ItemType Directory -Path (Split-Path $archive) -Force | Out-Null

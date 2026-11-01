@@ -1,0 +1,16 @@
+# Runs the daily credit check at about 09:00 local time.
+# Install: copy rh-credits.service + rh-credits.timer to
+# /etc/systemd/system/, fix the path in the .service, then:
+#   systemctl daemon-reload && systemctl enable --now rh-credits.timer
+# Alternative: let a Muse schedule scripts/check_credits.py daily
+# (see AGENT_GUIDE.md) — use one mechanism, not both.
+[Unit]
+Description=Daily RH Runner credit check
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+Unit=rh-credits.service
+
+[Install]
+WantedBy=timers.target

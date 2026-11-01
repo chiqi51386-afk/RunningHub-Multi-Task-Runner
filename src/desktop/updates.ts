@@ -36,7 +36,7 @@ export interface UpdateInfo {
 }
 
 export interface UpdateProgress {
-  stage: "downloading" | "verifying" | "extracting" | "restarting";
+  stage: "downloading" | "verifying" | "extracting" | "restarting" | "failed";
   percent: number;
   message: string;
 }
@@ -67,7 +67,7 @@ export function parseLatestRelease(payload: unknown, currentVersion: string): Up
   const latestVersion = typeof release.tag_name === "string" ? release.tag_name.replace(/^v/i, "") : "";
   if (latestVersion !== latestVersion.trim() || !versionParts(latestVersion).length) throw new Error("最新 Release 缺少有效版本号。");
   const assets = Array.isArray(release.assets) ? release.assets as GithubReleaseAsset[] : [];
-  const asset = assets.find(item => item?.name === `RunningHub-Runner-v${latestVersion}-windows-x64.zip`);
+  const asset = assets.find(item => item?.name === `RunningHub-Runner-v${latestVersion}-windows-x64-setup.exe`);
   return {
     currentVersion,
     latestVersion,

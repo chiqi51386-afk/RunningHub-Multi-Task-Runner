@@ -1,0 +1,11 @@
+# Daily credit check (oneshot). Adjust the path to your install dir.
+# Used together with rh-credits.timer. The script refreshes every account
+# against the overseas site and appends a summary to data/credits-history.jsonl.
+[Unit]
+Description=RH Runner daily credit check
+After=network.target rh-runner.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/USER/rh-runner-cloud
+ExecStart=/usr/bin/python3 scripts/check_credits.py

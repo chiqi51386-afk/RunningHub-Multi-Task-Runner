@@ -52,6 +52,8 @@ jobs:
 
       - name: 类型检查与自动化测试
         run: |
+          npm run download-engine:prepare
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run typecheck
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm test
@@ -59,16 +61,18 @@ jobs:
           npm run frontend:typecheck
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: 构建 Windows x64 可执行压缩包
+      - name: 构建 Windows x64 安装包
         run: npm run release:win
 
       - name: 验证发布文件存在
         shell: pwsh
         run: |
-          $artifact = "release-build/RunningHub-Runner-$env:RELEASE_TAG-windows-x64.zip"
+          $artifact = "release-build/RunningHub-Runner-$env:RELEASE_TAG-windows-x64-setup.exe"
           if (-not (Test-Path -LiteralPath $artifact)) {
             throw "云端构建未生成预期文件：$artifact"
           }
+          node scripts/verify-windows-installer.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-Item -LiteralPath $artifact | Select-Object FullName, Length
 
       - name: 归档源码并生成校验文件
@@ -77,7 +81,7 @@ jobs:
           node scripts/security-scan.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & ./scripts/export-source.ps1
-          Get-ChildItem -LiteralPath release-build -Filter "RunningHub-Runner-$env:RELEASE_TAG-*.zip" | ForEach-Object {
+          Get-ChildItem -LiteralPath release-build -File | Where-Object { $_.Name -like "RunningHub-Runner-$env:RELEASE_TAG-*" -or $_.Name -eq "latest.yml" } | ForEach-Object {
             $digest = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$digest  $($_.Name)"
           } | Set-Content -LiteralPath release-build/SHA256SUMS.txt -Encoding ascii
@@ -88,8 +92,10 @@ jobs:
           name: RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64
           if-no-files-found: error
           path: |
-            release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
+            release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64-setup.exe
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-source.zip
+            release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64-setup.exe.blockmap
+            release-build/latest.yml
             release-build/SHA256SUMS.txt
 
       - name: 生成构建证明
@@ -98,7 +104,7 @@ jobs:
         if: ${{ !(github.repository == 'chiqi51386-afk/RunningHub-Multi-Task-Runner' && github.event.repository.private == true) }}
         uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with:
-          subject-path: release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
+          subject-path: release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64-setup.exe
 
       - name: 记录私有个人仓库的构建证明例外
         if: ${{ github.repository == 'chiqi51386-afk/RunningHub-Multi-Task-Runner' && github.event.repository.private == true }}
@@ -110,8 +116,10 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
           files: |
-            release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64.zip
+            release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64-setup.exe
             release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-source.zip
+            release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-windows-x64-setup.exe.blockmap
+            release-build/latest.yml
             release-build/SHA256SUMS.txt
-          body_path: RELEASE_NOTES_v1.1.1.md
+          body: "Desktop application update."
           name: RunningHub Runner ${{ env.RELEASE_TAG }}

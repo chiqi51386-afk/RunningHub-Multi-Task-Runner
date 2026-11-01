@@ -1,0 +1,20 @@
+{
+  "name": "rh-runner-cloud",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node dist/src/cloud/main.js"
+  },
+  "engines": {
+    "node": "^22.21.0 || ^24.5.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.11.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2"
+  }
+}

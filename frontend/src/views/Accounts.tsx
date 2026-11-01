@@ -10,7 +10,16 @@ export default function Accounts({ accounts, refreshing, onRefresh, onRefreshAll
   const [platform, setPlatform] = useState<"runninghub" | "gemini">("runninghub");
   const [concurrencyError,setConcurrencyError]=useState("");
   const [savingConcurrency,setSavingConcurrency]=useState<string>();
+  const [exporting,setExporting]=useState(false);
+  const [exportMessage,setExportMessage]=useState("");
   return <>
+    <div className="account-export-toolbar"><button className="secondary" disabled={exporting || !window.runningHub} onClick={async()=>{
+      setExporting(true);setExportMessage("");
+      try { const result=await window.runningHub!.accounts.exportAll();if(result)setExportMessage(`已导出 RunningHub ${result.runninghub} 个、Gemini ${result.gemini} 个账号。`); }
+      catch(error){setConcurrencyError(error instanceof Error?error.message:String(error));}
+      finally{setExporting(false);}
+    }}>{exporting?"正在导出…":"导出全部账号"}</button><small>包含 RunningHub、Gemini 完整密钥，仅用于迁移，请妥善保管。</small></div>
+    <Feedback message={exportMessage} tone="success" onClose={()=>setExportMessage("")}/>
     <div className="account-platform-tabs" role="tablist" aria-label="账号平台">
       <button type="button" role="tab" id="runninghub-tab" aria-controls="runninghub-panel" aria-selected={platform === "runninghub"} onClick={() => setPlatform("runninghub")}>RunningHub</button>
       <button type="button" role="tab" id="gemini-tab" aria-controls="gemini-panel" aria-selected={platform === "gemini"} onClick={() => setPlatform("gemini")}>Gemini</button>

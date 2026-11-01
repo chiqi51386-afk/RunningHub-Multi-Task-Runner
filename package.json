@@ -1,6 +1,6 @@
 {
   "name": "runninghub-multi-task-runner-core",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "Desktop app for running workflows through the RunningHub API.",
@@ -25,13 +25,14 @@
     "frontend:typecheck": "npm --prefix frontend run typecheck",
     "frontend:build": "npm --prefix frontend run build",
     "desktop:build": "npm run frontend:build && npm run build",
-    "desktop:launch": "npm run native:ensure-electron && electron dist/src/desktop/main.js",
+    "desktop:launch": "npm run download-engine:prepare && npm run native:ensure-electron && electron dist/src/desktop/main.js",
+    "download-engine:prepare": "node scripts/prepare-download-engine.mjs",
     "native:node": "npm rebuild better-sqlite3",
     "native:electron": "electron-rebuild -f -w better-sqlite3",
     "native:ensure-electron": "node scripts/ensure-electron-native.mjs",
     "desktop:start": "npm run desktop:build && npm run desktop:launch",
     "desktop:smoke": "npm run desktop:build && npm run native:electron && electron dist/src/desktop/main.js --smoke",
-    "release:win": "npm run desktop:build && npm run native:electron && electron-builder --win dir --x64 && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.ps1",
+    "release:win": "npm run download-engine:prepare && npm run desktop:build && npm run native:electron && electron-builder --win nsis --x64 --publish never",
     "release:mac": "npm run desktop:build && electron-builder --mac zip --arm64 --publish never",
     "release:mac:intel": "npm run desktop:build && electron-builder --mac zip --x64 --publish never",
     "licenses:generate": "node scripts/generate-third-party-licenses.mjs",
@@ -42,7 +43,8 @@
     "node": ">=20"
   },
   "dependencies": {
-    "better-sqlite3": "^12.2.0"
+    "better-sqlite3": "^12.2.0",
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
@@ -62,6 +64,7 @@
     },
     "files": [
       "dist/src/**/*",
+      "!dist/src/cloud/**/*",
       "frontend/dist/**/*",
       "desktop/preload.cjs",
       "desktop/assets/**/*",
@@ -75,22 +78,55 @@
     ],
     "mac": {
       "icon": "desktop/assets/icon.png",
-      "target": [{ "target": "zip", "arch": ["arm64"] }],
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
       "artifactName": "RunningHub-Runner-v${version}-macos-${arch}.${ext}",
       "category": "public.app-category.video",
       "identity": "-",
       "notarize": false
     },
     "win": {
+      "extraResources": [
+        {
+          "from": "download-engine",
+          "to": "download-engine",
+          "filter": [
+            "**/*"
+          ]
+        }
+      ],
       "icon": "desktop/assets/icon.ico",
+      "artifactName": "RunningHub-Runner-v${version}-windows-x64-setup.${ext}",
+      "publish": [
+        {
+          "provider": "github",
+          "owner": "chiqi51386-afk",
+          "repo": "RunningHub-Multi-Task-Runner"
+        }
+      ],
       "target": [
         {
-          "target": "dir",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
         }
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": "always",
+      "shortcutName": "RunningHub Runner"
     }
   }
 }

@@ -272,7 +272,7 @@ test("partial uploads from account A are never reused after reassignment to acco
       submitted.push(...body.nodeInfoList);
       return Response.json({ code: 0, data: { taskId: "media-owner-task" } });
     }
-    if (url.endsWith("/query")) return Response.json({ status: "SUCCESS", results: [] });
+    if (url.endsWith("/query")) return Response.json({ status: "SUCCESS", results: [{ text: "completed" }] });
     throw new Error(`Unexpected URL ${url}`);
   };
   const backend = new RunningHubBackend({ databasePath: ":memory:", logger: new NullLogger(), fetch: fetchMock,
@@ -419,7 +419,7 @@ test("poll sleeps remove every external abort listener after normal resolution",
   }, async input => {
     if (!String(input).endsWith("/query")) throw new Error(`Unexpected URL ${String(input)}`);
     queries += 1;
-    return Response.json(queries < 8 ? { status: "RUNNING" } : { status: "SUCCESS", results: [] });
+    return Response.json(queries < 8 ? { status: "RUNNING" } : { status: "SUCCESS", results: [{ text: "completed" }] });
   });
   const controller = new AbortController();
   const signal = controller.signal;
@@ -451,7 +451,7 @@ test("confirmed queue-capacity submit error reassigns safely and never becomes S
       if (key === "key-a") return Response.json({ code: 9001, message: "queue capacity is full" });
       return Response.json({ code: 0, data: { taskId: "capacity-reassigned" } });
     }
-    if (url.endsWith("/query")) return Response.json({ status: "SUCCESS", results: [] });
+    if (url.endsWith("/query")) return Response.json({ status: "SUCCESS", results: [{ text: "completed" }] });
     throw new Error(`Unexpected URL ${url}`);
   };
   const backend = new RunningHubBackend({ databasePath: ":memory:", logger: new NullLogger(), fetch: fetchMock,

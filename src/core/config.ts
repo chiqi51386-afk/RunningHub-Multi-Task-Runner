@@ -2,7 +2,9 @@ import path from "node:path";
 import type { RunningHubConfig } from "./types.js";
 
 export const DEFAULT_RUNNINGHUB_CONFIG: RunningHubConfig = {
-  apiHost: "https://www.runninghub.cn",
+  // Distribution patch (owner requirement): overseas site only.
+  // Upstream default pointed at the domestic site; never access it.
+  apiHost: "https://www.runninghub.ai",
   pollIntervalMs: 5_000,
   pollJitterMs: 500,
   maxPollingMs: 30 * 60_000,

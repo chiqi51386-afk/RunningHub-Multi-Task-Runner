@@ -1,0 +1,13 @@
+services:
+  runner:
+    build:
+      context: ..
+      dockerfile: cloud/Dockerfile
+    ports:
+      - "127.0.0.1:17863:17863"
+    volumes:
+      - runner-data:/data
+    restart: unless-stopped
+    stop_grace_period: 45s
+volumes:
+  runner-data:

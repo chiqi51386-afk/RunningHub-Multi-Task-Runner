@@ -12,7 +12,7 @@ import type {
   RunningHubConfig,
 } from "../types.js";
 import { classifyRunningHubError, maskSecrets, RunningHubError, terminalTaskError } from "./errors.js";
-import { asObject, classifyRemoteTaskResponse, extractUploadValue, normalizedJobResult, normalizeRunningHubResponse } from "./normalizer.js";
+import { asObject, classifyRemoteTaskResponse, extractUploadValue, hasIncompleteOutputs, normalizedJobResult, normalizeRunningHubResponse } from "./normalizer.js";
 
 interface RequestOptions {
   phase: "account" | "upload" | "submit" | "query" | "download" | "cancel";
@@ -194,7 +194,6 @@ export class RunningHubClient {
       await sleep(jitter(interval, this.config.pollJitterMs), options.signal);
       try {
         const response = await this.queryTask(taskId);
-        failures = 0;
         const normalized = normalizeRunningHubResponse(response);
         const status = normalized.status ?? "UNKNOWN";
         const remoteState = classifyRemoteTaskResponse(response);
@@ -204,6 +203,7 @@ export class RunningHubClient {
           const detail = terminalTaskError(this.redactResponse(response), remoteState === "CANCELLED" ? "CANCEL" : "FAILED");
           throw new RunningHubError(detail.message, detail);
         }
+        failures = 0;
       } catch (error) {
         if (error instanceof RunningHubError && !error.detail.retryable) throw error;
         failures += 1;
@@ -296,6 +296,10 @@ function sanitizeRaw(value: unknown): unknown {
 }
 
 export function parseJobResult(taskId: string, raw: JsonObject): JobResult {
+  if (hasIncompleteOutputs(raw)) throw new RunningHubError("远端任务已成功，但结果或下载地址尚未完整返回；仅重查原任务，不重新生成。", {
+    code:"QUERY_FAILED",message:"远端任务已成功，但结果或下载地址尚未完整返回；仅重查原任务，不重新生成。",
+    phase:"query",retryable:true,accountRelated:false,safeToReassign:false,
+  });
   return normalizedJobResult(taskId, raw);
 }
 

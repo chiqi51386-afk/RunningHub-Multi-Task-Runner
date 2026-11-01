@@ -19,5 +19,9 @@ dist/
 .DS_Store
 Thumbs.db
 /tmp/
+/download-engine/
 /output/
 /github-public-*.jpg
+/rh-accounts*.json
+/api.token
+/cloud/data/

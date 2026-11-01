@@ -1,22 +1,23 @@
 import { app, BrowserWindow, dialog, ipcMain as electronIpcMain, nativeImage, shell, safeStorage, clipboard, session } from "electron";
 import { normalizeProxySettings, electronProxyConfig, type AppProxySettings } from "./proxy.js";
 import { sessionFetch } from "./electronNetwork.js";
+import { ariaDownload } from "./ariaDownload.js";
 import type { IpcMainInvokeEvent } from "electron";
 import { focusExistingWindow } from "./windowLifecycle.js";
+import { existingUserDataPath, hasUnfinishedWork } from "./installerPolicy.js";
 import { createHash, randomUUID } from "node:crypto";
 import { resolveMediaInputs } from "../core/workflows/mediaInputs.js";
 import { MV_WORKFLOW_ID, validateMvInput } from "../core/workflows/mvValidation.js";
 import { syncBundledWorkflows } from "../core/workflows/bundled.js";
 import { jobOutputPath, namingRule, shortOutputPath, type NamingRule } from "../core/downloads/naming.js";
-import { spawn } from "node:child_process";
+import electronUpdater, { type NsisUpdater } from "electron-updater";
 import { safeOutputExtension } from "../core/runninghub/client.js";
-import { createWriteStream, mkdtempSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { access, appendFile, mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
-import { Readable, Transform } from "node:stream";
-import { pipeline } from "node:stream/promises";
+import { access, appendFile, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { RunningHubBackend } from "../core/index.js";
+import { exportAccounts } from "../core/accounts/portable.js";
 import { InMemorySecretStore } from "../core/secretStore.js";
 import { SystemSecretStore, migratePlaintextKeys } from "../core/secureSecrets.js";
 import { GeminiStore } from "../core/gemini/store.js";
@@ -27,8 +28,8 @@ import { optimizeH3 } from "../core/gemini/h3Optimizer.js";
 import { TTS_LANGUAGES, type TtsInput } from "../core/gemini/ttsTypes.js";
 import { stereoWav } from "../core/gemini/stereoWav.js";
 import type { Account, CreateJobInput, InstanceType, Job, WorkflowProfile, WorkflowRecord } from "../core/types.js";
-import { latestReleaseApiUrls, latestReleaseUrl, parseLatestRelease, trustedUpdateAssetPrefixes, updateRepositoryUrl } from "./updates.js";
-import type { UpdateInfo, UpdateProgress } from "./updates.js";
+import { latestReleaseApiUrls, latestReleaseUrl, parseLatestRelease, updateRepositoryUrl } from "./updates.js";
+import type { UpdateProgress } from "./updates.js";
 
 interface RendererDraft {
   taskName?: string;
@@ -49,7 +50,7 @@ const ttsRequests = new Map<string, AbortController>();
 const smokeMode = process.argv.includes("--smoke");
 if(process.platform==='win32')app.setAppUserModelId('ai.runninghub.runner');
 if (smokeMode) app.setPath("userData", mkdtempSync(path.join(app.getPath("temp"), "rh-desktop-smoke-")));
-else app.setPath("userData", path.join(app.getPath("appData"), "runninghub-multi-task-runner-core"));
+else app.setPath("userData", existingUserDataPath(app.getPath("appData")));
 let mainWindow: BrowserWindow | undefined;
 let rendererUrl = "";
 const ipcMain = {
@@ -78,6 +79,31 @@ let proxyTesting = false;
 let defaultOutputDir = "";
 let thumbnailCacheDir = "";
 let updateInProgress = false;
+let installerUpdater: NsisUpdater | undefined;
+let installerError: Error | undefined;
+function getInstallerUpdater(): NsisUpdater {
+  if (installerUpdater) return installerUpdater;
+  const updater = new electronUpdater.NsisUpdater();
+  updater.autoDownload = false;
+  updater.autoInstallOnAppQuit = false;
+  updater.allowDowngrade = false;
+  updater.allowPrerelease = false;
+  updater.disableWebInstaller = true;
+  updater.on("error", error => {
+    installerError = error;
+    updateInProgress = false;
+    sendUpdateProgress({ stage: "failed", percent: 0, message: "更新失败，请检查网络或从发布页面下载安装包。当前数据未删除。" });
+  });
+  updater.on("checking-for-update", () => { installerError = undefined; });
+  updater.on("download-progress", progress => sendUpdateProgress({
+    stage: "downloading", percent: Math.min(100, Math.round(progress.percent)), message: "正在下载安装包…",
+  }));
+  updater.on("update-downloaded", () => sendUpdateProgress({
+    stage: "verifying", percent: 100, message: "安装包完整性校验完成。",
+  }));
+  installerUpdater = updater;
+  return updater;
+}
 let applicationVersion = app.getVersion();
 let thumbnailQueue: Promise<void> = Promise.resolve();
 const thumbnailRequests = new Map<string, Promise<string | undefined>>();
@@ -101,6 +127,7 @@ async function resolveApplicationVersion(): Promise<string> {
 }
 
 async function checkForUpdate() {
+  if (updateInProgress) throw new Error("更新正在进行，请勿重复检查。");
   let lastError = "GitHub 更新服务暂不可用。";
   for (const apiUrl of latestReleaseApiUrls) {
     try {
@@ -108,7 +135,19 @@ async function checkForUpdate() {
         headers: { Accept: "application/vnd.github+json", "User-Agent": `RunningHub-Runner/${applicationVersion}` },
         signal: AbortSignal.timeout(15_000),
       });
-      if (response.ok) return parseLatestRelease(await response.json(), applicationVersion);
+      if (response.ok) {
+        const info = parseLatestRelease(await response.json(), applicationVersion);
+        if (info.updateAvailable && process.platform === "win32" && app.isPackaged) {
+          if (!info.assetName) throw new Error("此版本尚未提供 Windows 安装包，请等待下一版本发布。");
+          const updater = getInstallerUpdater();
+          await updater.netSession.setProxy(electronProxyConfig(activeProxy));
+          const result = await updater.checkForUpdates();
+          if (!result?.isUpdateAvailable || result.updateInfo.version !== info.latestVersion) {
+            throw new Error("安装包更新清单尚未就绪，请稍后再试。");
+          }
+        }
+        return info;
+      }
       if (response.status === 404) throw new Error("个人仓库尚无可公开访问的 Release，或仓库为私有；请联系发布者确认更新权限。");
       lastError = `GitHub 返回 HTTP ${response.status}`;
     } catch (error) {
@@ -131,140 +170,30 @@ function registerRendererEvents(): void {
   });
 }
 
-function runPowerShell(args: string[]): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", ...args], {
-      windowsHide: true,
-      stdio: ["ignore", "ignore", "pipe"],
-    });
-    let errorOutput = "";
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", chunk => { errorOutput = `${errorOutput}${String(chunk)}`.slice(-4000); });
-    child.once("error", reject);
-    child.once("exit", code => code === 0 ? resolve() : reject(new Error(errorOutput.trim() || `PowerShell 执行失败（退出码 ${code ?? "未知"}）。`)));
-  });
-}
-
-function validateUpdateAsset(info: UpdateInfo): asserts info is UpdateInfo & Required<Pick<UpdateInfo, "assetName" | "assetUrl" | "assetDigest">> {
-  if (!info.updateAvailable) throw new Error("当前已经是最新版本。");
-  if (!info.assetName || !info.assetUrl) throw new Error("最新版本缺少 Windows x64 更新包，请稍后重试或打开项目主页。");
-  if (!/^sha256:[a-f\d]{64}$/i.test(info.assetDigest ?? "")) throw new Error("更新包缺少 GitHub SHA-256 摘要，为安全起见已停止自动更新。");
-  const assetUrl = new URL(info.assetUrl);
-  if (assetUrl.protocol !== "https:" || assetUrl.hostname !== "github.com" ||
-    !trustedUpdateAssetPrefixes.some(prefix => assetUrl.pathname.startsWith(prefix))) {
-    throw new Error("更新包地址不是本项目的 GitHub Release，已停止自动更新。");
+function assertUpdateIdle(): void {
+  if (hasUnfinishedWork(backend.jobs.list().map(job => job.status), ttsRequests.size)) {
+    throw new Error("还有任务未完成，请完成或停止任务后再更新。");
   }
 }
 
 async function downloadAndInstallUpdate(): Promise<{ started: true }> {
   if (updateInProgress) throw new Error("更新正在进行，请勿重复操作。");
-  if (process.platform !== "win32" || !app.isPackaged) throw new Error("自动更新仅支持已打包的 Windows 应用。");
+  if (process.platform !== "win32" || !app.isPackaged) throw new Error("自动更新仅支持 Windows 安装版。");
+  assertUpdateIdle();
   updateInProgress = true;
   try {
-    const info = await checkForUpdate();
-    validateUpdateAsset(info);
-    const updateRoot = path.join(app.getPath("userData"), "updates", `v${info.latestVersion}`);
-    const stagingDir = path.join(updateRoot, "staging");
-    const partialArchive = path.join(updateRoot, `${info.assetName}.part`);
-    const archivePath = path.join(updateRoot, info.assetName);
-    await rm(updateRoot, { recursive: true, force: true });
-    await mkdir(updateRoot, { recursive: true });
-
-    sendUpdateProgress({ stage: "downloading", percent: 0, message: `正在下载 v${info.latestVersion}…` });
-    const response = await applicationFetch(info.assetUrl, {
-      headers: { Accept: "application/octet-stream", "User-Agent": `RunningHub-Runner/${applicationVersion}` },
-      redirect: "follow",
-      signal: AbortSignal.timeout(10 * 60_000),
-    });
-    const finalAssetUrl = new URL(response.url || info.assetUrl);
-    if (finalAssetUrl.protocol !== "https:") throw new Error("更新下载被重定向到非 HTTPS 地址，已停止更新。");
-    if (!response.ok || !response.body) throw new Error(`下载更新失败：GitHub 返回 HTTP ${response.status}`);
-    const expectedBytes = info.assetSize ?? (Number(response.headers.get("content-length")) || 0);
-    let receivedBytes = 0;
-    const hash = createHash("sha256");
-    const progress = new Transform({
-      transform(chunk: Buffer, _encoding, callback) {
-        receivedBytes += chunk.length;
-        hash.update(chunk);
-        const percent = expectedBytes > 0 ? Math.min(99, Math.round(receivedBytes / expectedBytes * 100)) : 0;
-        sendUpdateProgress({ stage: "downloading", percent, message: expectedBytes > 0 ? `正在下载 v${info.latestVersion}：${percent}%` : `正在下载 v${info.latestVersion}…` });
-        callback(null, chunk);
-      },
-    });
-    await pipeline(Readable.fromWeb(response.body as never), progress, createWriteStream(partialArchive));
-
-    sendUpdateProgress({ stage: "verifying", percent: 100, message: "正在校验更新包…" });
-    const actualDigest = `sha256:${hash.digest("hex")}`;
-    if (actualDigest.toLowerCase() !== info.assetDigest.toLowerCase()) {
-      await rm(partialArchive, { force: true });
-      throw new Error("更新包 SHA-256 校验失败，文件可能不完整，已停止更新。");
-    }
-    if (info.assetSize && receivedBytes !== info.assetSize) {
-      await rm(partialArchive, { force: true });
-      throw new Error(`更新包大小校验失败：应为 ${info.assetSize} 字节，实际为 ${receivedBytes} 字节。`);
-    }
-    await rename(partialArchive, archivePath);
-
-    sendUpdateProgress({ stage: "extracting", percent: 100, message: "正在解压并准备更新…" });
-    await mkdir(stagingDir, { recursive: true });
-    const extractorPath = path.join(updateRoot, "extract-update.ps1");
-    await writeFile(extractorPath, String.raw`param(
-  [Parameter(Mandatory=$true)][string]$ArchivePath,
-  [Parameter(Mandatory=$true)][string]$DestinationPath
-)
-$ErrorActionPreference = "Stop"
-$destinationRoot = [IO.Path]::GetFullPath($DestinationPath).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zip = [IO.Compression.ZipFile]::OpenRead($ArchivePath)
-try {
-  foreach ($entry in $zip.Entries) {
-    $entryPath = [IO.Path]::GetFullPath([IO.Path]::Combine($DestinationPath, $entry.FullName))
-    if (-not $entryPath.StartsWith($destinationRoot, [StringComparison]::OrdinalIgnoreCase)) {
-      throw "更新包包含越界路径，已停止解压。"
-    }
-  }
-} finally {
-  $zip.Dispose()
-}
-Expand-Archive -LiteralPath $ArchivePath -DestinationPath $DestinationPath -Force
-`, "utf8");
-    try {
-      await runPowerShell(["-File", extractorPath, "-ArchivePath", archivePath, "-DestinationPath", stagingDir]);
-    } finally {
-      await rm(extractorPath, { force: true });
-    }
-    const executableName = path.basename(process.execPath);
-    await access(path.join(stagingDir, executableName)).catch(() => { throw new Error("更新包结构无效：找不到应用程序文件。"); });
-
-    const updaterPath = path.join(updateRoot, "apply-update.ps1");
-    const installDir = path.dirname(process.execPath);
-    const updaterScript = String.raw`param(
-  [Parameter(Mandatory=$true)][int]$ParentProcessId,
-  [Parameter(Mandatory=$true)][string]$SourceDir,
-  [Parameter(Mandatory=$true)][string]$TargetDir,
-  [Parameter(Mandatory=$true)][string]$ExecutablePath,
-  [Parameter(Mandatory=$true)][string]$ArchivePath
-)
-$ErrorActionPreference = "Stop"
-Wait-Process -Id $ParentProcessId -ErrorAction SilentlyContinue
-Start-Sleep -Milliseconds 500
-& robocopy.exe $SourceDir $TargetDir /E /COPY:DAT /DCOPY:DAT /R:5 /W:1 /NFL /NDL /NJH /NJS /NP
-$copyExitCode = $LASTEXITCODE
-if ($copyExitCode -gt 7) { throw "更新文件替换失败，Robocopy 退出码：$copyExitCode" }
-Remove-Item -LiteralPath $SourceDir -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
-Start-Process -FilePath $ExecutablePath -WorkingDirectory $TargetDir
-Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
-`;
-    await writeFile(updaterPath, updaterScript, "utf8");
-    const updater = spawn("powershell.exe", [
-      "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", updaterPath,
-      "-ParentProcessId", String(process.pid), "-SourceDir", stagingDir, "-TargetDir", installDir,
-      "-ExecutablePath", process.execPath, "-ArchivePath", archivePath,
-    ], { detached: true, windowsHide: true, stdio: "ignore" });
-    updater.unref();
-    sendUpdateProgress({ stage: "restarting", percent: 100, message: "更新已准备完成，正在重启…" });
-    setTimeout(() => app.quit(), 300);
+    const updater = getInstallerUpdater();
+    await updater.netSession.setProxy(electronProxyConfig(activeProxy));
+    await updater.netSession.closeAllConnections();
+    const result = await updater.checkForUpdates();
+    if (!result?.isUpdateAvailable) throw new Error("当前没有可安装的新版本。");
+    sendUpdateProgress({ stage: "downloading", percent: 0, message: "正在下载安装包…" });
+    await updater.downloadUpdate();
+    // Tasks may have been started while the installer was downloading.
+    assertUpdateIdle();
+    sendUpdateProgress({ stage: "restarting", percent: 100, message: "安装包已校验，正在启动安装程序…" });
+    updater.quitAndInstall(false, true);
+    if (installerError) throw installerError;
     return { started: true };
   } catch (error) {
     updateInProgress = false;
@@ -522,6 +451,14 @@ function registerHandlers(): void {
   });
   ipcMain.handle("accounts:setConcurrency", (_event,id:string,value:unknown)=>accountView(backend.accounts.setConcurrency(id,value)));
   ipcMain.handle("accounts:list", () => backend.accounts.list().map(accountView));
+  ipcMain.handle("accounts:export", async () => {
+    const result = await dialog.showSaveDialog({ title: "导出全部账号（含完整 API Key，请妥善保管）",
+      defaultPath: path.join(app.getPath("downloads"), "rh-accounts.json"), filters: [{ name: "账号迁移文件", extensions: ["json"] }] });
+    if (result.canceled || !result.filePath) return undefined;
+    const value = exportAccounts(backend.database, gemini.store);
+    await writeFile(result.filePath, JSON.stringify(value, null, 2), { mode: 0o600 });
+    return { path: result.filePath, runninghub: value.runninghub.length, gemini: value.gemini.keys.length };
+  });
   ipcMain.handle("accounts:setPriority", (_event,id:string,preferred:unknown)=>accountView(backend.accounts.setPriority(id,preferred)));
   ipcMain.handle("gemini:setOptimizationEnabled", (_event, enabled: unknown) => gemini.store.setOptimizationEnabled(enabled));
   const skillWorkflow=(id:unknown)=>{
@@ -765,6 +702,9 @@ async function createWindow(): Promise<BrowserWindow> {
   mainWindow = window;
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", event => event.preventDefault());
+  window.webContents.on("will-frame-navigate", details => {
+    if (!details.isMainFrame) details.preventDefault();
+  });
   window.webContents.on("will-attach-webview", event => event.preventDefault());
   window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   window.webContents.session.setPermissionCheckHandler(() => false);
@@ -793,6 +733,7 @@ if (hasSingleInstanceLock) app.whenReady().then(async () => {
   const secretStore = smokeMode ? new InMemorySecretStore() : new SystemSecretStore(safeStorage);
   backend = new RunningHubBackend({
     fetch: applicationFetch,
+    downloadTransfer: process.platform === "win32" ? ariaDownload(path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), "download-engine", "aria2c.exe")) : undefined,
     databasePath: smokeMode ? ":memory:" : path.join(userData, "runninghub.sqlite"),
     secretStore,
     config: { apiHost: "https://www.runninghub.ai", outputDir },

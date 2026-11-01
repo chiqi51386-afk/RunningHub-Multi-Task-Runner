@@ -1,0 +1,72 @@
+name: Linux
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - name: Package
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p 'require("./package.json").version')
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then test "$GITHUB_REF" = "refs/tags/v$VERSION"; fi
+          echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
+          python3 scripts/package-linux.py
+          unzip -q "release-build/RunningHub-Runner-v$VERSION-linux.zip" -d "$RUNNER_TEMP/linux-package"
+          cd "$RUNNER_TEMP/linux-package/RH-Runner-Cloud"
+          sha256sum -c SHA256SUMS
+          bash -n install.sh
+          python3 -m compileall -q scripts smoke app/cloud/client.py
+      - name: Install and validate without credentials
+        run: |
+          set -euo pipefail
+          PACKAGE="$RUNNER_TEMP/linux-package/RH-Runner-Cloud"
+          INSTALL="$RUNNER_TEMP/rh-runner"
+          bash "$PACKAGE/install.sh" --dir "$INSTALL" --no-service
+          test ! -d "$INSTALL/current/node_modules/electron"
+          test ! -d "$INSTALL/current/node_modules/react"
+          cd "$INSTALL/current"
+          RH_DATA_DIR="$INSTALL/data" node dist/src/cloud/main.js > "$RUNNER_TEMP/linux-smoke.log" 2>&1 &
+          SERVER=$!
+          trap 'kill "$SERVER" 2>/dev/null || true' EXIT
+          for n in $(seq 1 30); do
+            if RH_TOKEN_FILE="$INSTALL/data/api.token" python3 cloud/client.py GET /health; then break; fi
+            sleep 1
+          done
+          python3 "$INSTALL/smoke/smoke_test.py" --dir "$INSTALL"
+          sha256sum "$INSTALL/data/api.token" "$INSTALL/data/secrets.key" > "$RUNNER_TEMP/keys-before"
+          kill "$SERVER"
+          wait "$SERVER" || true
+          bash "$PACKAGE/install.sh" --dir "$INSTALL" --no-service
+          sha256sum -c "$RUNNER_TEMP/keys-before"
+          npm --prefix "$INSTALL/current" audit --omit=dev --audit-level=high
+      - name: Validate container
+        run: docker build -f cloud/Dockerfile -t rh-runner-cloud:check .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Linux
+          path: |
+            release-build/RunningHub-Runner-*-linux.zip
+            release-build/SHA256SUMS-linux.txt
+          if-no-files-found: error
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: |
+            release-build/RunningHub-Runner-${{ env.RELEASE_TAG }}-linux.zip
+            release-build/SHA256SUMS-linux.txt

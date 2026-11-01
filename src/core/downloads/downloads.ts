@@ -21,6 +21,7 @@ export class DownloadQueue {
     private readonly events: BackendEvents,
     private readonly logger: Logger,
     private readonly fetchImpl: typeof fetch,
+    private readonly transfer: typeof downloadFile = downloadFile,
   ) {}
 
   start(): void { this.running = true; this.drain(); }
@@ -87,6 +88,12 @@ export class DownloadQueue {
     job = this.jobs.transition(job.id, "DOWNLOADING", { retryPhase: null, retryAfter: null });
     this.events.emit("download.updated", job);
     try {
+      if (!originalOutputs.files.length && !originalOutputs.texts.some(text=>text.trim())) {
+        throw new RunningHubError("原任务没有可下载的结果，不能标记为完成。", {
+          code:"DOWNLOAD_FAILED",message:"原任务没有可下载的结果，请查询原任务；不要再次生成。",
+          phase:"download",retryable:false,accountRelated:false,safeToReassign:false,
+        });
+      }
       const outputDir = path.resolve(job.outputDir ?? this.config.outputDir);
       const files = [];
       for (let index = 0; index < originalOutputs.files.length; index += 1) {
@@ -94,7 +101,7 @@ export class DownloadQueue {
         const ext = safeOutputExtension(file);
         const filename = jobOutputPath(job,index,originalOutputs.files.length,file.url,ext);
         const destination = path.join(outputDir, filename);
-        const localPath = await downloadFile(this.fetchImpl, this.config, file.url, destination, signal);
+        const localPath = await this.transfer(this.fetchImpl, this.config, file.url, destination, signal);
         files.push({ ...file, localPath });
       }
       const outputs = { ...originalOutputs, files };

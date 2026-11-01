@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld("runningHub", {
     copyKeysUrl: () => ipcRenderer.invoke("gemini:copyKeysUrl"),
   },
   accounts: {
+    exportAll: () => ipcRenderer.invoke("accounts:export"),
     setPriority: (id, preferred) => ipcRenderer.invoke("accounts:setPriority", id, preferred),
     setConcurrency: (id, value) => ipcRenderer.invoke("accounts:setConcurrency", id, value),
     list: () => ipcRenderer.invoke("accounts:list"),

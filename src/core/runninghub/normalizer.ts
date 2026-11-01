@@ -50,7 +50,8 @@ export function normalizeRunningHubResponse(raw: unknown): NormalizedRunningHubT
   const texts: string[] = [];
   for (const value of resultValues) {
     const item = asObject(value);
-    const url = firstString(item.url, item.fileUrl, item.file_url, item.outputUrl, item.download_url);
+    const url = [item.url, item.fileUrl, item.file_url, item.outputUrl, item.download_url]
+      .find((value): value is string => typeof value === "string" && !!value.trim())?.trim();
     if (url) {
       files.push({
         url,
@@ -61,13 +62,24 @@ export function normalizeRunningHubResponse(raw: unknown): NormalizedRunningHubT
       continue;
     }
     const text = item.text ?? item.content ?? item.output;
-    if (text != null) texts.push(String(text));
+    const declaresFile = ["fileUrl", "file_url", "url", "outputUrl", "download_url"].some(key => key in item)
+      || /^(video|audio|image|mp4|mov|webm|mp3|wav|png|jpg|jpeg|webp)$/i.test(firstString(item.fileType,item.outputType,item.type) ?? "");
+    if (!declaresFile && text != null && String(text).trim()) texts.push(String(text));
   }
   return {
     taskId, status, errorCode, errorMessage,
     failedReason: root.failedReason ?? root.failed_reason ?? data.failedReason ?? data.failed_reason,
     files, texts, usage: root.usage ?? data.usage, raw,
   };
+}
+
+/** Missing or partial outputs are a query problem, never permission to run again. */
+export function hasIncompleteOutputs(raw: unknown): boolean {
+  const root=asObject(raw), data=asObject(root.data);
+  const results=Array.isArray(root.results)?root.results:Array.isArray(data.results)?data.results:Array.isArray(root.data)?root.data:[];
+  const normalized=normalizeRunningHubResponse(raw);
+  const count=normalized.files.length+normalized.texts.length;
+  return count===0 || count<results.length;
 }
 
 export function normalizedJobResult(taskId: string, raw: unknown): JobResult {

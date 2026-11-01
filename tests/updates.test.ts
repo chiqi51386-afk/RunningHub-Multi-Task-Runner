@@ -21,7 +21,7 @@ test("release versions cannot escape the update directory", () => {
 
 test("update package must match the release tag exactly", () => {
   const result = parseLatestRelease({ tag_name: "v0.1.49", assets: [null,
-    { name: "RunningHub-Runner-v0.1.48-windows-x64.zip" }] }, "0.1.47");
+    { name: "RunningHub-Runner-v0.1.48-windows-x64-setup.exe" }] }, "0.1.47");
   assert.equal(result.assetName, undefined);
 });
 
@@ -33,7 +33,7 @@ test("GitHub release parsing selects the official Windows package", () => {
     assets: [
       { name: "source.zip", browser_download_url: "https://example.invalid/source.zip" },
       {
-        name: "RunningHub-Runner-v0.1.3-windows-x64.zip",
+        name: "RunningHub-Runner-v0.1.3-windows-x64-setup.exe",
         browser_download_url: "https://example.invalid/app.zip",
         digest: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         size: 123456,
@@ -42,7 +42,7 @@ test("GitHub release parsing selects the official Windows package", () => {
   }, "0.1.2");
   assert.equal(result.updateAvailable, true);
   assert.equal(result.latestVersion, "0.1.3");
-  assert.equal(result.assetName, "RunningHub-Runner-v0.1.3-windows-x64.zip");
+  assert.equal(result.assetName, "RunningHub-Runner-v0.1.3-windows-x64-setup.exe");
   assert.equal(result.assetUrl, "https://example.invalid/app.zip");
   assert.equal(result.assetDigest, "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
   assert.equal(result.assetSize, 123456);

@@ -2,6 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { classifyRunningHubError, resolveConfig, RunningHubClient, maskSecrets } from "../src/core/index.js";
 
+test("overseas invalid-key response 806 is terminal and never reassigns a submitted task", () => {
+  const account = classifyRunningHubError({ httpStatus: 200, code: 806, message: "APIKEY_USER_NOT_FOUND", phase: "account" });
+  assert.equal(account.code, "ACCOUNT_INVALID_KEY");
+  assert.equal(account.retryable, false);
+  const query = classifyRunningHubError({ httpStatus: 200, code: 806, message: "APIKEY_USER_NOT_FOUND", phase: "query" });
+  assert.equal(query.safeToReassign, false);
+});
+
 test("client follows official auth, upload, submit, query, and output contract", async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   let queryCount = 0;

@@ -35,7 +35,13 @@ export default function SettingsModal({ preferences, onPreferencesChange, onClos
     }).catch(reason => setError(String(reason)));
     void bridge.downloads.naming().then(setNaming).catch(reason => setError(String(reason)));
     void bridge.downloads.directory().then(setDownloadDirectory).catch(reason => setError(reason instanceof Error ? reason.message : "读取下载目录失败"));
-    return bridge.updates.onProgress(setUpdateProgress);
+    return bridge.updates.onProgress(progress => {
+      if (progress.stage === "failed") {
+        setError(progress.message);
+        setInstallingUpdate(false);
+        setUpdateProgress(undefined);
+      } else setUpdateProgress(progress);
+    });
   }, []);
 
   async function configureProxy(test: boolean) {
@@ -131,7 +137,7 @@ export default function SettingsModal({ preferences, onPreferencesChange, onClos
       {updateInfo && <div className={`update-status ${updateInfo.updateAvailable ? "available" : "current"}`}><strong>{updateInfo.updateAvailable ? `发现新版本 v${updateInfo.latestVersion}` : "当前已经是最新版本"}</strong><span>当前 v{updateInfo.currentVersion} · 最新 v{updateInfo.latestVersion}</span></div>}
       {updateProgress && <div className="update-progress"><div><span>{updateProgress.message}</span><b>{updateProgress.percent}%</b></div><progress max={100} value={updateProgress.percent} /></div>}
       <div className="settings-actions"><button type="button" className="secondary" disabled={!window.runningHub || checkingUpdate || installingUpdate} onClick={() => void checkUpdate()}>{checkingUpdate ? "正在检查…" : "检查更新"}</button>{updateInfo?.updateAvailable && <button type="button" className="primary" disabled={installingUpdate} onClick={() => void installUpdate()}>{installingUpdate ? <><LoaderCircle className="spin" size={14} />正在更新…</> : <><Download size={14} />立即更新并重启</>}</button>}<button type="button" className="ghost" disabled={installingUpdate} onClick={() => void openSettingsLink(window.runningHub?.updates.openRepository)}>项目主页</button></div>
-      <div className="update-data-note"><ShieldCheck size={16} /><span>更新包会从官方 GitHub Release 下载并校验 SHA-256，随后自动替换程序文件并重启。API Key、工作流、任务和设置保存在独立数据库中，不会被更新器删除。</span></div>
+      <div className="update-data-note"><ShieldCheck size={16} /><span>安装包从 GitHub Release 下载并校验 SHA-512，通过安装程序更新。账号、任务、设置及下载位置继续使用原来的数据目录。</span></div>
     </section>
     <Feedback message={error} onClose={()=>setError(undefined)}>{updateInfo?.updateAvailable && <button type="button" className="ghost small" onClick={() => void openSettingsLink(window.runningHub?.updates.openLatestRelease)}><ExternalLink size={13} />手动下载</button>}</Feedback>
     </div>

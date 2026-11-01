@@ -97,7 +97,7 @@ export async function downloadFile(fetchImpl: typeof fetch, config: RunningHubCo
 }
 
 // Exclusive publication avoids both overwrites and check-then-rename races.
-async function publishWithoutOverwrite(temp: string, destination: string): Promise<string> {
+export async function publishWithoutOverwrite(temp: string, destination: string): Promise<string> {
   const ext = path.extname(destination);
   const stem = destination.slice(0, destination.length - ext.length);
   for (let suffix = 0; ; suffix++) {

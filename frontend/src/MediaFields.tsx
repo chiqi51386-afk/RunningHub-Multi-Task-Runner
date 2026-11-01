@@ -1,4 +1,5 @@
 import { Select } from "./Select";
+import { AudioInputPlayer } from "./AudioInputPlayer";
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronDown, ImagePlus, Music2, FileJson, Play } from "lucide-react";
 import type { CreateJobDraft, WorkflowParameterView } from "./types";
@@ -113,7 +114,7 @@ const MediaFieldContent = memo(function MediaFieldContent({ parameter, draft, in
 export const MediaPreview = memo(function MediaPreview({ type, url }: { type: "image" | "video" | "audio"; url: string }) {
   if (type === "image") return <img draggable={false} className="media-input-preview" src={url} alt="已选择的图片预览" />;
   if (type === "video") return <video className="media-input-preview" src={url} controls preload="metadata" />;
-  return <audio className="media-input-audio" src={url} controls preload="metadata" />;
+  return <AudioInputPlayer key={url} url={url} />;
 });
 
 export function StaticVideoThumbnail({ localPath }: { localPath?: string }) {

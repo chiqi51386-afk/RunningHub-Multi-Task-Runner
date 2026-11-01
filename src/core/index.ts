@@ -19,6 +19,7 @@ export interface BackendOptions {
   logger?: Logger;
   fetch?: typeof fetch;
   clientFactory?: (apiKey: string) => RunningHubClientLike;
+  downloadTransfer?: typeof import("./downloads/transfer.js").downloadFile;
 }
 
 export class RunningHubBackend {
@@ -47,7 +48,7 @@ export class RunningHubBackend {
     );
     this.workflows = new Workflows(this.database, this.events);
     this.jobs = new Jobs(this.database, this.events);
-    this.downloads = new DownloadQueue(this.config, this.jobs, this.events, logger, fetchImpl);
+    this.downloads = new DownloadQueue(this.config, this.jobs, this.events, logger, fetchImpl, options.downloadTransfer);
     this.scheduler = new Scheduler(
       this.database, this.config, this.accounts, this.jobs, this.downloads, this.events, logger,
     );

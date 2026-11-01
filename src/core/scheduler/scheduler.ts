@@ -10,7 +10,8 @@ import type { Jobs } from "../jobs/jobs.js";
 import type { Logger } from "../logger.js";
 import { buildNodeInfoList } from "../workflows/nodeInfo.js";
 import { RunningHubError, submitUnknown, terminalTaskError } from "../runninghub/errors.js";
-import { normalizedJobResult, normalizeRunningHubResponse } from "../runninghub/normalizer.js";
+import { normalizeRunningHubResponse, hasIncompleteOutputs } from "../runninghub/normalizer.js";
+import { parseJobResult } from "../runninghub/client.js";
 import type { AccountState, Job, JobError, RunningHubConfig } from "../types.js";
 
 export class Scheduler {
@@ -199,8 +200,8 @@ export class Scheduler {
       return terminal;
     }
     if (status === "SUCCESS" && current.remoteTaskId) {
+      const result = parseJobResult(current.remoteTaskId, response);
       this.stopLocalTracking(jobId);
-      const result = normalizedJobResult(current.remoteTaskId, response);
       let succeeded = this.jobs.transition(current.id, "REMOTE_SUCCESS", {
         outputs: result, rawResult: result.raw, remoteCompletedAt: Date.now(), lastError: null,
       });
@@ -665,6 +666,16 @@ export class Scheduler {
       if (job.status === "CANCELLED" && hasConfirmedRemoteSuccess(job)) {
         job = this.jobs.recoverTransition(job.id, "REMOTE_SUCCESS", {
           lastError: null, remoteCompletedAt: job.remoteCompletedAt ?? job.completedAt ?? Date.now(), completedAt: null,
+        });
+      }
+      // Repair old false successes using their original task/account only.
+      if (["COMPLETED","REMOTE_SUCCESS","DOWNLOAD_PENDING","DOWNLOADING"].includes(job.status)
+        && job.remoteTaskId && job.accountId && job.outputs
+        && hasIncompleteOutputs(job.rawResult ?? job.outputs.raw)
+        && normalizeRunningHubResponse(job.rawResult ?? job.outputs.raw).status === "SUCCESS") {
+        job=this.jobs.recoverTransition(job.id,"RETRY_WAIT",{
+          completedAt:null,retryPhase:"query",retryAfter:Date.now(),
+          lastError:{code:"QUERY_FAILED",phase:"query",message:"下载地址未完整返回，仅重新查询原任务，不重新生成。",retryable:true,accountRelated:false,safeToReassign:false},
         });
       }
       if (["COMPLETED", "FAILED", "CANCELLED", "SUBMIT_UNKNOWN"].includes(job.status)) continue;
