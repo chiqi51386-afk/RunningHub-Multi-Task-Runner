@@ -21,7 +21,7 @@ async function jsonBody(request: IncomingMessage): Promise<any> {
     if (length > 32 * 1024 * 1024) throw new Error("Request too large");
     chunks.push(Buffer.from(chunk));
   }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+  return JSON.parse(Buffer.concat(chunks).toString("utf8").replace(/^\uFEFF/, "") || "{}");
 }
 
 export function cloudServer(runtime: CloudRuntime, token: string) {
@@ -115,7 +115,10 @@ export function cloudServer(runtime: CloudRuntime, token: string) {
           // Detection is separate and explicit; importing does not submit anything.
           return send(result);
         }
-        if (method === "POST" && id === "runninghub") return send(backend.accounts.add(body.label, body.apiKey));
+        if (method === "POST" && id === "runninghub") {
+          if (typeof body.label !== "string" || body.label.length > 200 || typeof body.apiKey !== "string" || !/^[\x21-\x7e]{1,2048}$/.test(body.apiKey.trim())) throw new Error("填写账号名称和一个完整 API Key，Key 内不能有空格或换行");
+          return send(backend.accounts.add(body.label, body.apiKey));
+        }
         if (method === "POST" && id === "gemini") return send(gemini.store.add(body.keys));
         if (method === "POST" && id && action === "test") return send(await backend.accounts.refresh(id));
         if (method === "POST" && id === "test-all") return send(await backend.accounts.refreshAll());

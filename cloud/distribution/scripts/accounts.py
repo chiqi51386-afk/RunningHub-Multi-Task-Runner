@@ -38,7 +38,7 @@ def api(method, endpoint, body=None, timeout=900):
 
 def read_keys(path):
     if path:
-        return [ln.strip() for ln in Path(path).read_text(encoding="utf-8").splitlines() if ln.strip()]
+        return [ln.strip() for ln in Path(path).read_text(encoding="utf-8-sig").splitlines() if ln.strip()]
     return [getpass.getpass("API key (hidden): ").strip()]
 
 def find_account(ref):
@@ -74,10 +74,13 @@ def main():
         for k in g["keys"]:
             print(f"  {k['label']:<12} {k.get('state')} enabled={k['enabled']} {k['maskedKey']} id={k['id']}")
     elif args.cmd == "import":
-        body = json.loads(Path(args.file).read_text(encoding="utf-8"))
+        body = json.loads(Path(args.file).read_text(encoding="utf-8-sig"))
         print(api("POST", "/accounts/import", body))
     elif args.cmd == "add-rh":
-        key = read_keys(args.key_file)[0]
+        keys = read_keys(args.key_file)
+        if len(keys) != 1:
+            raise SystemExit("RunningHub requires exactly one key; use account import for multiple accounts.")
+        key = keys[0]
         acc = api("POST", "/accounts/runninghub", {"label": args.label, "apiKey": key})
         print(f"added: {acc['label']} id={acc['id']} state={acc['state']}")
         if args.test:

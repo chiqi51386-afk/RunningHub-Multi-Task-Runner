@@ -28,3 +28,5 @@ Read `AGENT_GUIDE.md` and `VIDEO_GUIDE.md` for usage. The smoke test is read-onl
 
 Docker deployment: `cd app && docker compose -f cloud/compose.yaml up -d --build`.
 The Docker data volume must be retained during upgrades.
+
+AI operation starts at AI_START.md. API_REFERENCE.md documents implemented endpoints; UNAVAILABLE.md lists gaps.

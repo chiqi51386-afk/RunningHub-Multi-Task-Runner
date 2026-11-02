@@ -1,3 +1,5 @@
+> 先读 AI_START.md。日常只提交和取结果，不自行检查内容对错；所有管理接口见 API_REFERENCE.md，缺项见 UNAVAILABLE.md。
+
 # Linux 无界面操作指南
 
 Linux 没有可视界面。AI 通过操作接口完成桌面端的填写、预览、加入制作批次、编辑及提交。不要手拼节点参数。本文是日常操作入口；VIDEO_GUIDE.md 中 /jobs 底层示例仅用于兼容旧调用。
@@ -6,13 +8,13 @@ Linux 没有可视界面。AI 通过操作接口完成桌面端的填写、预�
 
 1. GET /workspace/modules 查看模块；GET /workflows 查看实际工作流。
 2. POST /uploads?filename=voice.wav 上传原始文件字节，取得 localPath。或把素材放进 data/uploads。音频返回实际时长和向上取整时长。
-3. POST /workspace/preview，传一条下方的操作表单：预览最终参数，不创建任务、不调用 Gemini、不扣费。
+3. 可选：仅用户要求预览时 POST /workspace/preview，传下方操作表单；正常生成跳过本步。
 4. POST /workspace/batches，传 `{"requestId":"唯一批次号","tasks":[表单1,表单2]}`，对应“加入制作批次”。会保存素材、开关、名称、参数、Skill 快照。
 5. GET /workspace/batches/批次号 查看；PATCH 同一路径传 `{"tasks":[修改后的完整表单列表]}` 替换未提交批次。清空文字用空字符串，清空图片用空数组，删除未提交批次用 DELETE。
 6. POST /workspace/batches/批次号/submit 对应“批量提交”，此步才创建生成任务。重复点提交返回原 jobIds，不重复创建。已提交批次不允许修改。
 7. GET /jobs/任务ID 查询；完成并下载后 GET /jobs/任务ID/files/0 取文件。
 
-修改输入后须重新预览。工作流版本已变化会阻止旧批次提交，需要重新编辑确认。预览不会提前生成优化词，优化发生于正式任务执行阶段。
+修改输入由软件重新校验，只有用户要求才预览。工作流版本已变化会阻止旧批次提交，需要重新编辑确认。预览不会提前生成优化词，优化发生于正式任务执行阶段。
 
 ## 通用字段
 
